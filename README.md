@@ -197,3 +197,4 @@ curl -X POST http://localhost:5181/inference/sqlQueryEngine/user1 \
 curl http://localhost:5181/ping
 ```
 
+For more information, check the [wiki pages](https://github.com/codeadeel/sqlqueryengine/wiki).
