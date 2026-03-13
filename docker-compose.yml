@@ -1,0 +1,118 @@
+services:
+
+  # %%
+  # SQL Query Engine — NL-to-SQL inference service
+  sql-query-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: queryenginepostgresql
+    image: sql-query-engine:latest
+    container_name: sql-query-engine
+    hostname: sqlqueryengine
+    ports:
+      - 5181:8080
+    environment:
+      # LLM Configuration (OpenAI-compatible endpoint)
+      # Ollama:  LLM_BASE_URL=http://host.docker.internal:11434/v1
+      # vLLM:    LLM_BASE_URL=http://host.docker.internal:8000/v1
+      # OpenAI:  LLM_BASE_URL=https://api.openai.com/v1
+      - LLM_BASE_URL=http://10.190.147.198:8001/v1
+      - LLM_MODEL=Qwen3-Coder-30B-A3B-Instruct
+      - LLM_API_KEY=vllm123
+      - LLM_TEMPERATURE=0.7
+
+      # PostgreSQL Configuration
+      # Point this at your own Docker PostgreSQL container IP/hostname
+      - POSTGRES_HOST=10.128.0.128
+      - POSTGRES_PORT=5141
+      - POSTGRES_DB=mesdb
+      - POSTGRES_USER=mesuser
+      - POSTGRES_PASSWORD=mespass
+
+      # Redis Configuration — uses the redis service defined below
+      - REDIS_HOST=qeredis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=sqlPass
+      - REDIS_DB=0
+
+      # Server Configuration
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - SERVER_WORKERS=1
+
+      # Bot Configuration
+      - BOT_NAME=SQLBot
+
+      # Redis Pub/Sub split identifier (separates event tag from content in streamed messages)
+      - SPLIT_IDENTIFIER=<|-/|-/>
+
+      # OpenAI-Compatible API — Authentication
+      # Set to a secret value; leave empty to disable authentication entirely.
+      # Comma-separate multiple keys to allow more than one token.
+      - OPENAI_API_KEY=meow123
+
+      # OpenAI-Compatible API — Model name exposed via /v1/models
+      # This is the name OpenWebUI (or any OpenAI client) will see in the model list.
+      - COMPLETIONS_MODEL_NAME=SQLBot
+
+      # OpenAI-Compatible API — Default pipeline parameters for /v1/chat/completions
+      # and /v1/completions. When set here, query parameters become optional.
+      # Remove or leave blank to make them required query parameters.
+      - DEFAULT_RETRY_COUNT=5
+      - DEFAULT_SCHEMA_EXAMPLES=5
+      - DEFAULT_FEEDBACK_EXAMPLES=3
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - sqlEngineNetwork
+
+  # %%
+  # OpenWebUI — chat interface pre-configured with the SQL Query Engine
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    hostname: openwebui
+    ports:
+      - 5182:8080
+    volumes:
+      - openWebUIData:/app/backend/data
+    environment:
+      # Disable Ollama — we are not using it
+      - ENABLE_OLLAMA_API=false
+
+      # Pre-configure the SQL Query Engine as the OpenAI-compatible backend.
+      # Multiple connections are semicolon-separated; positions must match between
+      # OPENAI_API_BASE_URLS and OPENAI_API_KEYS.
+      - OPENAI_API_BASE_URLS=http://sqlqueryengine:8080/v1
+      - OPENAI_API_KEYS=meow123
+    depends_on:
+      - sql-query-engine
+    restart: unless-stopped
+    networks:
+      - sqlEngineNetwork
+
+  # %%
+  # Redis — session context store and Pub/Sub streaming backend
+  redis:
+    image: redis:alpine
+    container_name: redisqueryengine
+    hostname: qeredis
+    ports:
+      - 6380:6379
+    volumes:
+      - sqlEngineRedis:/data
+    command: ["redis-server", "--requirepass", "sqlPass", "--appendonly", "yes"]
+    networks:
+      - sqlEngineNetwork
+
+networks:
+  sqlEngineNetwork:
+    driver: bridge
+  
+volumes:
+  sqlEngineRedis:
+    driver: local
+  openWebUIData:
+    driver: local
