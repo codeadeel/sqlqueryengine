@@ -4,10 +4,11 @@
 # Importing Necessary Libraries
 import logging
 import json
+import re
 import psycopg
 import traceback
 import warnings
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
@@ -33,10 +34,20 @@ logger = logging.getLogger(__name__)
 # Structured output schema for SQL evaluation — the LLM produces this
 class QueryEvaluationSchema(BaseModel):
     """Schema for SQL query evaluation and repair."""
-    isValid: bool = Field(..., description="True if the query executed successfully and returned relevant results. False on errors or empty results.")
-    modifiedUserPrompt: str = Field(..., description="The original user prompt, optionally modified to better align with the schema if the query failed.")
-    observation: str = Field(..., description="Detailed observation about query validity, errors encountered, and what was changed.")
-    fixedQuery: str = Field(..., description="The corrected SQL query. Use the provided schema description to fix schema mismatch errors.")
+    isValid: bool = Field(default=False, description="Always false. The system verifies by executing.")
+    modifiedUserPrompt: str = Field(default="", description="The original user prompt, optionally modified.")
+    observation: str = Field(default="", description="What was wrong and how it was fixed.")
+    fixedQuery: str = Field(default="", description="The corrected SQL query.")
+    fixed_query: str = Field(default="", description="Alias for fixedQuery.")
+    sql: str = Field(default="", description="Alias for fixedQuery.")
+    query: str = Field(default="", description="Alias for fixedQuery.")
+
+    @model_validator(mode="after")
+    def normalize_query_field(self):
+        """Accept various field names for the fixed query."""
+        if not self.fixedQuery:
+            self.fixedQuery = self.fixed_query or self.sql or self.query
+        return self
 
 # %%
 # SQL query evaluator — runs the generated query against PostgreSQL and uses
@@ -111,10 +122,44 @@ class QueryEvaluator:
         self.splitIdentifier = splitIdentifier
 
         self.llm = ChatOpenAI(**self.llmParams)
-        self.queryEvaluationInstance = self.llm.with_structured_output(QueryEvaluationSchema)
 
         self.postgreDB = PostgresDB(**self.dbParams)
         self.chatInstance = SessionManager(self.redisParams, self.agentName)
+
+    @staticmethod
+    def _parseEvalResponse(content: str) -> "QueryEvaluationSchema":
+        """Extract fixed query from LLM response. Tries JSON, then code blocks, then SELECT."""
+        # Strip <think> tags first
+        cleaned = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
+
+        # Try JSON parse
+        try:
+            data = json.loads(cleaned)
+            return QueryEvaluationSchema(**data)
+        except (json.JSONDecodeError, Exception):
+            pass
+
+        # Try extracting JSON object from text
+        jsonMatch = re.search(r'\{[^{}]*"(?:fixedQuery|fixed_query|sql|query)"[^{}]*\}', cleaned, re.DOTALL)
+        if jsonMatch:
+            try:
+                data = json.loads(jsonMatch.group())
+                return QueryEvaluationSchema(**data)
+            except (json.JSONDecodeError, Exception):
+                pass
+
+        # Extract SQL from code blocks
+        codeBlock = re.search(r'```(?:sql)?\s*\n?(.*?)\n?```', cleaned, re.DOTALL | re.IGNORECASE)
+        if codeBlock:
+            return QueryEvaluationSchema(fixedQuery=codeBlock.group(1).strip(), observation=cleaned[:200])
+
+        # Find SELECT statement
+        selectMatch = re.search(r'(SELECT\s+.+?;)', cleaned, re.DOTALL | re.IGNORECASE)
+        if selectMatch:
+            return QueryEvaluationSchema(fixedQuery=selectMatch.group(1).strip(), observation=cleaned[:200])
+
+        # Last resort
+        return QueryEvaluationSchema(fixedQuery=cleaned, observation="Could not parse response")
 
     def _buildFromPayload(self, generatorContextKey: str, localPayload: dict) -> dict:
         """
@@ -355,7 +400,7 @@ class QueryEvaluator:
         schemaDump, schemaParsed = self.postgreDB.getParsedSchemaDump(expLen=schemaExamples)
         validatorChat = ChatPromptTemplate.from_messages([queryEvaluatorFixerPrompt]).format_messages(
             botName=self.botName,
-            botGoal=f"You are a helpful SQL assistant named {self.botName}. Evaluate and fix SQL queries. All queries must be read-only and output LIMIT <= 100.",
+            botGoal=f"You are a helpful SQL assistant named {self.botName}. Evaluate and fix SQL queries. All queries must be read-only (SELECT only). Only fix queries that have execution errors or return empty results. Use ROUND(..., 2) for decimals. Never use bind parameters — use literal values. Only add LIMIT if the original query had one. Return ONLY the fixed SQL query.",
             postgreManual=postgreManualDataEval
         )
 
@@ -364,6 +409,12 @@ class QueryEvaluator:
         currentUserPrompt = basePrompt
         validator = False
         retryCounter = 0
+
+        # Track the best result seen across all attempts — if we exhaust retries,
+        # return the best we got instead of nothing.
+        bestQuery = baseQuery
+        bestResults = list()
+        bestObservation = baseDescription
 
         while ((not validator) and (retryCounter < retryCount)):
             errorLines = list()
@@ -404,41 +455,53 @@ class QueryEvaluator:
                 errorStr = "\n".join(str(line) for line in errorLines)
                 self.postgreDB.conn.rollback()
 
-            # Prepare the evaluation prompt with execution results and error details
-            validatorChat.append(HumanMessage(content=f"""
-            Check and validate the following SQL query based on the database schema description, schema, user prompt, observations, and execution results provided below. If there are errors in the execution or if the results are empty, fix the query accordingly. Provide a detailed observation of what was wrong and how it was fixed. Also, modify the user prompt if necessary to better align with the database schema and requirements.
+            # Track best result — prefer the attempt with the most rows
+            if len(errorLines) == 0 and len(retter) > len(bestResults):
+                bestQuery = currentQuery
+                bestResults = retter
+                bestObservation = currentObservation
 
-            Current Database Schema Description:
-            ---------------------------------
-            {schemaDesc[-1].content}
+            # If the query executed successfully and returned rows, accept it immediately
+            # without invoking the LLM evaluator — this prevents regressions where
+            # the LLM rewrites a working query into a broken one.
+            if len(errorLines) == 0 and len(retter) > 0:
+                logger.info(f"[ {chatID} | {self.agentName} # {retryCounter+1} ] : Query executed successfully with {len(retter)} rows — accepting without LLM evaluation")
+                self.chatInstance.redisClient.publish(f"{chatID}", f"</SQLQueryEvaluator:QueryFixAttempt#{retryCounter+1}>{self.splitIdentifier}Query executed successfully with {len(retter)} rows")
+                currentObservation = f"Query executed successfully and returned {len(retter)} rows."
+                validator = True
+                retryCounter += 1
+                continue
 
-            Current Database Schema:
-            ---------------------------
+            # Prepare a focused evaluation prompt — only include schema on first attempt
+            # to avoid context bloat on subsequent retries.
+            if retryCounter == 0:
+                schemaSection = f"""
+            Database Schema:
             {schemaParsed}
 
-            User Prompt:
-            -------------
-            {currentUserPrompt}
+            Schema Description (summary):
+            {schemaDesc[-1].content[:3000]}
+            """
+            else:
+                schemaSection = "(Schema provided in previous message — refer to it above.)"
 
-            CURRENTLY EXECUTED QUERY USED TO GENERATE RESULTS:
-            ---------------------------------------------------
+            validatorChat.append(HumanMessage(content=f"""Fix this SQL query. It has {"execution errors" if len(errorLines) > 0 else "returned empty results"}.
+
+            RULES: Only SELECT columns the user asked for. Use ROUND(..., 2) for decimals. No bind parameters. Use PostgreSQL syntax. Make minimal changes.
+
+            User Question: {currentUserPrompt}
+
+            Failed Query:
             {currentQuery}
 
-            Retrieved Observations after Above Query Execution:
-            ---------------------------------------------------
-            {currentObservation}
-
-            Execution Result or Outputs from the above query execution:
-            [Fix the executed query based on the data below, if there are errors or empty results]:
-            NOTE: MAKE SURE TO RETURN isValid=False IF THERE ARE ERRORS OR EMPTY RESULTS
-            ---------------------------------------------------------------------------
-            {str(retter[:feedbackExamples])}
-
-            Error Messages from the above query execution:
-            [Fix the executed query based on the errors below, if there are errors]:
-            NOTE: MAKE SURE TO RETURN isValid=False IF THERE ARE ERRORS
-            -------------------------------------------------------------------------
+            Error:
             {errorStr}
+
+            Results: {str(retter[:feedbackExamples]) if retter else "EMPTY — 0 rows returned"}
+
+            {schemaSection}
+
+            Return isValid=false and provide the fixed query in fixedQuery.
             """))
 
             # Publish current query + execution errors before invoking the LLM
@@ -446,50 +509,23 @@ class QueryEvaluator:
             self.chatInstance.redisClient.publish(f"{chatID}", f"</SQLQueryEvaluator:QueryFixAttempt#{retryCounter+1}>{self.splitIdentifier}Current Observation : {currentObservation}")
             self.chatInstance.redisClient.publish(f"{chatID}", f"</SQLQueryEvaluator:QueryFixAttempt#{retryCounter+1}>{self.splitIdentifier}Execution Errors : {errorStr}")
 
-            # Invoke the LLM evaluator and update the loop state
-            evalQuery = self.queryEvaluationInstance.invoke(validatorChat)
-            currentObservation = evalQuery.observation
-            currentQuery = evalQuery.fixedQuery
-            currentUserPrompt = evalQuery.modifiedUserPrompt
+            # Invoke the LLM evaluator to get a fixed query
+            rawEvalResp = self.llm.invoke(validatorChat)
+            evalQuery = self._parseEvalResponse(rawEvalResp.content)
 
-            self.chatInstance.redisClient.publish(f"{chatID}", f"</SQLQueryEvaluator:QueryFixAttempt#{retryCounter+1}>{self.splitIdentifier}LLM Judgement : {evalQuery.isValid}")
             self.chatInstance.redisClient.publish(f"{chatID}", f"</SQLQueryEvaluator:QueryFixAttempt#{retryCounter+1}>{self.splitIdentifier}LLM Observation : {evalQuery.observation}")
             self.chatInstance.redisClient.publish(f"{chatID}", f"</SQLQueryEvaluator:QueryFixAttempt#{retryCounter+1}>{self.splitIdentifier}Fixed Query : {evalQuery.fixedQuery}")
-            self.chatInstance.redisClient.publish(f"{chatID}", f"</SQLQueryEvaluator:QueryFixAttempt#{retryCounter+1}>{self.splitIdentifier}Modified Prompt : {evalQuery.modifiedUserPrompt}")
 
-            validatorChat.append(AIMessage(content=f"""
-            Query Evaluation
-            ----------------
-            Is Valid: {evalQuery.isValid}
+            validatorChat.append(AIMessage(content=f"Observation: {evalQuery.observation}\nFixed Query: {evalQuery.fixedQuery}"))
 
-            Observation
-            -----------
-            {evalQuery.observation}
+            # Update state with the LLM's fix — the NEXT iteration will execute
+            # and verify it. We never trust isValid from the LLM; we verify ourselves.
+            currentQuery = evalQuery.fixedQuery
+            currentObservation = evalQuery.observation
+            currentUserPrompt = evalQuery.modifiedUserPrompt
 
-            Fixed Query
-            -----------
-            {evalQuery.fixedQuery}
-
-            Modified User Prompt
-            --------------------
-            {evalQuery.modifiedUserPrompt}
-            """))
-
-            if evalQuery.isValid:
-                validator = True
-                if len(retter) == 0:
-                    logger.info(f"[ {chatID} | {self.agentName} # {retryCounter+1} ] : Query valid but returned empty results, retrying")
-                    self.chatInstance.redisClient.publish(f"{chatID}", f"</SQLQueryEvaluator:QueryFixAttempt#{retryCounter+1}>{self.splitIdentifier}Query valid but empty results, retrying")
-                    currentObservation = f"[ {currentQuery} ] executed successfully but returned empty results. Based on {currentObservation}"
-                    validator = False
-                else:
-                    logger.info(f"[ {chatID} | {self.agentName} # {retryCounter+1} ] : Query validated successfully")
-                    self.chatInstance.redisClient.publish(f"{chatID}", f"</SQLQueryEvaluator:QueryFixAttempt#{retryCounter+1}>{self.splitIdentifier}Query validated successfully")
-            else:
-                logger.info(f"[ {chatID} | {self.agentName} # {retryCounter+1} ] : Query validation failed, retrying")
-                self.chatInstance.redisClient.publish(f"{chatID}", f"</SQLQueryEvaluator:QueryFixAttempt#{retryCounter+1}>{self.splitIdentifier}Query validation failed, retrying")
-                currentObservation = f"[ {currentQuery} ] resulted in errors or empty data. Needs fixing. Based on {currentObservation}"
-                validator = False
+            logger.info(f"[ {chatID} | {self.agentName} # {retryCounter+1} ] : LLM produced fix — will verify on next iteration")
+            self.chatInstance.redisClient.publish(f"{chatID}", f"</SQLQueryEvaluator:QueryFixAttempt#{retryCounter+1}>{self.splitIdentifier}Will verify fixed query on next iteration")
 
             retryCounter += 1
 
@@ -508,52 +544,45 @@ class QueryEvaluator:
             elif isinstance(i, AIMessage):
                 tempValidatorChat.append({"role": "assistant", "content": i.content})
 
+        # Determine the final query and results to return.
+        # If validation succeeded, use the current state.
+        # If retries exhausted, return the best result we saw instead of nothing.
         if validator:
-            return {
-                "code": 200,
-                "chatID": chatID,
-                "schemaExamples": schemaExamples,
-                "feedbackExamples": feedbackExamples,
-                "basePrompt": basePrompt,
-                "baseQuery": baseQuery,
-                "baseDescription": baseDescription,
-                "retryCount": retryCount,
-                "contextKey": generatorContextKey,
-                "data": {
-                    "queryEvaluationHistory": tempValidatorChat,
-                    "currentQuery": currentQuery.replace("\n", " "),
-                    "currentObservation": currentObservation,
-                    "results": retter
-                },
-                "response": {
-                    "currentQuery": currentQuery.replace("\n", " "),
-                    "currentObservation": currentObservation,
-                    "results": retter[:hardLimit]
-                }
-            }
+            finalQuery = currentQuery.replace("\n", " ")
+            finalObservation = currentObservation
+            finalResults = retter
+        elif len(bestResults) > 0:
+            logger.info(f"[ {chatID} | {self.agentName} ] : Retries exhausted — returning best result ({len(bestResults)} rows)")
+            finalQuery = bestQuery.replace("\n", " ")
+            finalObservation = f"Retries exhausted. Returning best result with {len(bestResults)} rows. {bestObservation}"
+            finalResults = bestResults
         else:
-            return {
-                "code": 200,
-                "chatID": chatID,
-                "schemaExamples": schemaExamples,
-                "feedbackExamples": feedbackExamples,
-                "basePrompt": basePrompt,
-                "baseQuery": baseQuery,
-                "baseDescription": baseDescription,
-                "retryCount": retryCount,
-                "contextKey": generatorContextKey,
-                "data": {
-                    "queryEvaluationHistory": tempValidatorChat,
-                    "currentQuery": None,
-                    "currentObservation": None,
-                    "results": list()
-                },
-                "response": {
-                    "currentQuery": None,
-                    "currentObservation": None,
-                    "results": list()
-                }
+            finalQuery = None
+            finalObservation = None
+            finalResults = list()
+
+        return {
+            "code": 200,
+            "chatID": chatID,
+            "schemaExamples": schemaExamples,
+            "feedbackExamples": feedbackExamples,
+            "basePrompt": basePrompt,
+            "baseQuery": baseQuery,
+            "baseDescription": baseDescription,
+            "retryCount": retryCount,
+            "contextKey": generatorContextKey,
+            "data": {
+                "queryEvaluationHistory": tempValidatorChat,
+                "currentQuery": finalQuery,
+                "currentObservation": finalObservation,
+                "results": finalResults
+            },
+            "response": {
+                "currentQuery": finalQuery,
+                "currentObservation": finalObservation,
+                "results": finalResults[:hardLimit]
             }
+        }
 
 
 # %%

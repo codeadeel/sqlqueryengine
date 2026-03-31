@@ -1,0 +1,132 @@
+services:
+
+  # %%
+  # PostgreSQL — empty instance, databases and schemas created at runtime by eval-runner
+  eval-postgres:
+    image: postgres:16-alpine
+    container_name: eval-postgres
+    hostname: evalpostgres
+    environment:
+      POSTGRES_USER: evaluser
+      POSTGRES_PASSWORD: evalpass
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evaluser -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - evalNetwork
+
+  # %%
+  # Redis — schema caching and pub/sub for the engine
+  eval-redis:
+    image: redis:alpine
+    container_name: eval-redis
+    hostname: evalredis
+    command: ["redis-server", "--requirepass", "evalPass", "--appendonly", "yes"]
+    networks:
+      - evalNetwork
+
+  # %%
+  # SQL Query Engine — built from the queryenginepostgresql stage of the root Dockerfile
+  eval-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: queryenginepostgresql
+    image: sql-query-engine:latest
+    container_name: eval-engine
+    hostname: evalengine
+    environment:
+      # LLM Configuration — Groq endpoint
+      - LLM_BASE_URL=https://api.groq.com/openai/v1
+      - LLM_MODEL=openai/gpt-oss-20b
+      - LLM_API_KEY=your-api-key-here
+      - LLM_TEMPERATURE=0.1
+
+      # PostgreSQL — points at eval-postgres (default DB; overridden per request)
+      - POSTGRES_HOST=evalpostgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=eval_ecommerce
+      - POSTGRES_USER=evaluser
+      - POSTGRES_PASSWORD=evalpass
+
+      # Redis
+      - REDIS_HOST=evalredis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=evalPass
+      - REDIS_DB=0
+
+      # Server
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - SERVER_WORKERS=1
+      - BOT_NAME=SQLBot
+      - SPLIT_IDENTIFIER=<|-/|-/>
+      - OPENAI_API_KEY=
+      - COMPLETIONS_MODEL_NAME=SQLBot
+      - DEFAULT_RETRY_COUNT=5
+      - DEFAULT_SCHEMA_EXAMPLES=5
+      - DEFAULT_FEEDBACK_EXAMPLES=3
+    depends_on:
+      eval-postgres:
+        condition: service_healthy
+      eval-redis:
+        condition: service_started
+    networks:
+      - evalNetwork
+
+  # %%
+  # Evaluation Runner — built from the evaluationrunner stage of the root Dockerfile
+  # Runs the full pipeline once, then exits. Results persisted via volume mount.
+  eval-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: evaluationrunner
+    image: sql-query-eval-runner:latest
+    container_name: eval-runner
+    hostname: evalrunner
+    environment:
+      # PostgreSQL — direct connection for seeding and gold query execution
+      - POSTGRES_HOST=evalpostgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=evaluser
+      - POSTGRES_PASSWORD=evalpass
+
+      # Engine API — for the actual evaluation
+      - ENGINE_URL=http://evalengine:8080
+      - ENGINE_PG_HOST=evalpostgres
+      - ENGINE_PG_PORT=5432
+
+      # Redis — for flushing cache between configs
+      - REDIS_HOST=evalredis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=evalPass
+
+      # LLM metadata — used by scoreReport.py for summary.json
+      - LLM_MODEL=openai/gpt-oss-20b
+      - LLM_TEMPERATURE=0.1
+
+      # Output
+      - RESULTS_DIR=/app/results
+      - QUESTIONS_PATH=/app/results/questions.json
+      - TIMEOUT_SECONDS=180
+      - QUESTIONS_PER_DB=25
+
+      # Parallel execution — 8B model has higher rate limits on Groq free tier
+      - EVAL_MAX_WORKERS=3
+    volumes:
+      - ./evaluation/results:/app/results
+    depends_on:
+      eval-postgres:
+        condition: service_healthy
+      eval-engine:
+        condition: service_started
+    networks:
+      - evalNetwork
+
+networks:
+  evalNetwork:
+    driver: bridge

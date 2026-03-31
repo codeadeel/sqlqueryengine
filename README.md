@@ -23,19 +23,19 @@ block-beta
 
     Client["Client"]
     space
-    API["FastAPI\n:5181"]
+    API["FastAPI<br>:5181"]
 
     space:3
 
-    GEN["QueryGenerator\nStage 1 · NL → SQL"]
+    GEN["QueryGenerator<br>Stage 1 · NL → SQL"]
     space
-    EVAL["QueryEvaluator\nStage 2 · Execute + Repair"]
+    EVAL["QueryEvaluator<br>Stage 2 · Execute + Repair"]
 
     space:3
 
     PG[("PostgreSQL")]
-    Redis[("Redis\nPub/Sub + Cache")]
-    LLM["LLM\nOpenAI-compatible"]
+    Redis[("Redis<br>Pub/Sub + Cache")]
+    LLM["LLM<br>OpenAI-compatible"]
 
     Client --> API
     API --> GEN
@@ -87,13 +87,27 @@ sequenceDiagram
     API-->>Client: <<response>> 200 JSON
 ```
 
+## Repository Layout
+
+```
+sqlqueryengine/
+├── sqlQueryEngine/         ← Core inference package (see sqlQueryEngine/README.md)
+├── evaluation/             ← Ablation study & benchmark harness (see evaluation/README.md)
+├── docker-compose.yml      ← Production stack (engine + Redis + OpenWebUI)
+├── docker-compose-evaluation.yml ← Evaluation stack (engine + Redis + PostgreSQL + runner)
+├── Dockerfile              ← Multi-stage build (engine image + evaluation runner image)
+├── run.py                  ← Uvicorn launcher
+├── curlCommands.sh         ← Curl command reference for every endpoint
+└── requirements.txt        ← Python dependencies
+```
+
 ## Quick Start
 
 **1. Clone the repository**
 
 ```bash
-git clone https://github.com/your-org/sql-query-engine.git
-cd sql-query-engine
+git clone https://github.com/codeadeel/sqlqueryengine.git
+cd sqlqueryengine
 ```
 
 **2. Configure `docker-compose.yml`**
@@ -197,4 +211,21 @@ curl -X POST http://localhost:5181/inference/sqlQueryEngine/user1 \
 curl http://localhost:5181/ping
 ```
 
-For more information, check the [wiki pages](https://github.com/codeadeel/sqlqueryengine/wiki).
+## Evaluation
+
+The repository includes a self-contained evaluation harness that measures the self-healing loop's impact on query accuracy. It seeds three PostgreSQL databases (e-commerce, university, hospital) with synthetic data, runs 75 gold-annotated questions across three configurations (generation-only, single-shot, full pipeline), and produces ablation tables.
+
+```bash
+docker compose -f docker-compose-evaluation.yml up --build
+```
+
+Results are written to `evaluation/results/`. See [`evaluation/README.md`](evaluation/README.md) for the full methodology, module reference, and benchmark results across five LLM backends.
+
+## Further Reading
+
+| Document | What it covers |
+|---|---|
+| [`sqlQueryEngine/README.md`](sqlQueryEngine/README.md) | Internal architecture, every module, class/method reference, streaming protocol, Pub/Sub format |
+| [`evaluation/README.md`](evaluation/README.md) | Evaluation methodology, question bank, scoring logic, multi-model benchmark results |
+| [`curlCommands.sh`](curlCommands.sh) | Copy-paste curl examples for every endpoint |
+| [Wiki](https://github.com/codeadeel/sqlqueryengine/wiki) | Additional guides and usage notes |
