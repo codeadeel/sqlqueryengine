@@ -1,0 +1,65 @@
+{
+  "model": "llama-3.3-70b-versatile",
+  "llm_temperature": 0.1,
+  "total_questions": 75,
+  "databases": [
+    "eval_ecommerce",
+    "eval_university",
+    "eval_hospital"
+  ],
+  "config_c": {
+    "accuracy": 52.0,
+    "correct": 39,
+    "avg_latency_s": 3.51,
+    "by_difficulty": {
+      "easy": 100.0,
+      "medium": 77.8,
+      "hard": 22.2,
+      "extra_hard": 0.0
+    },
+    "by_database": {
+      "eval_ecommerce": 60.0,
+      "eval_university": 52.0,
+      "eval_hospital": 44.0
+    }
+  },
+  "config_b": {
+    "accuracy": 52.0,
+    "correct": 39,
+    "avg_latency_s": 4.99,
+    "by_difficulty": {
+      "easy": 100.0,
+      "medium": 66.7,
+      "hard": 33.3,
+      "extra_hard": 0.0
+    },
+    "by_database": {
+      "eval_ecommerce": 68.0,
+      "eval_university": 44.0,
+      "eval_hospital": 44.0
+    }
+  },
+  "config_a": {
+    "accuracy": 54.7,
+    "correct": 41,
+    "avg_latency_s": 5.21,
+    "by_difficulty": {
+      "easy": 100.0,
+      "medium": 77.8,
+      "hard": 33.3,
+      "extra_hard": 0.0
+    },
+    "by_database": {
+      "eval_ecommerce": 64.0,
+      "eval_university": 52.0,
+      "eval_hospital": 48.0
+    }
+  },
+  "healing_breakdown": {
+    "correct_first_attempt": 39,
+    "fixed_by_healing": 2,
+    "exhausted_retries": 34,
+    "errors_or_timeouts": 0,
+    "regressions": 0
+  }
+}

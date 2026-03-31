@@ -20,8 +20,5 @@ build/
 .DS_Store
 Thumbs.db
 
-# Evaluation results (regenerated per run)
-evaluation/results/
-
 # Logs
 *.log

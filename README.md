@@ -219,7 +219,7 @@ The repository includes a self-contained evaluation harness that measures the se
 docker compose -f docker-compose-evaluation.yml up --build
 ```
 
-Results are written to `evaluation/results/`. See [`evaluation/README.md`](evaluation/README.md) for the full methodology, module reference, and benchmark results across five LLM backends.
+Results are written to [`evaluation/results/`](evaluation/results/). See [`evaluation/README.md`](evaluation/README.md) for the full methodology, module reference, and benchmark results across five LLM backends.
 
 ## Further Reading
 
