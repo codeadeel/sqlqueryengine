@@ -3,6 +3,9 @@
 # %%
 # Importing Necessary Libraries
 import logging
+from datetime import datetime, date
+from decimal import Decimal
+
 import psycopg
 
 logger = logging.getLogger(__name__)
@@ -68,11 +71,11 @@ class PostgresDB:
         list
             A list of (column_name, data_type) tuples.
         """
-        self.cur.execute(f"""
+        self.cur.execute("""
             SELECT column_name, data_type
             FROM information_schema.columns
-            WHERE table_name = '{table_name}'
-        """)
+            WHERE table_name = %s
+        """, (table_name,))
         return self.cur.fetchall()
 
     def getFullTableDump(self, table_name: str) -> list:
@@ -89,7 +92,9 @@ class PostgresDB:
         list
             A list of row tuples.
         """
-        self.cur.execute(f"SELECT * FROM {table_name}")
+        self.cur.execute(
+            psycopg.sql.SQL("SELECT * FROM {}").format(psycopg.sql.Identifier(table_name))
+        )
         return self.cur.fetchall()
 
     def getSchemaDump(self, expLen: int = 5) -> dict:
@@ -167,7 +172,15 @@ class PostgresDB:
         for row in res:
             rowDict = dict()
             for idx, col in enumerate(cols):
-                rowDict[col] = str(row[idx])
+                val = row[idx]
+                if isinstance(val, Decimal):
+                    rowDict[col] = float(val)
+                elif isinstance(val, (datetime, date)):
+                    rowDict[col] = str(val)
+                elif val is None:
+                    rowDict[col] = None
+                else:
+                    rowDict[col] = val
             rows.append(rowDict)
         return rows
 

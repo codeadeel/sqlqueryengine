@@ -23,7 +23,7 @@ postgreSystemPrompt = SystemMessagePromptTemplate.from_template(
 # Schema description prompt — instructs the LLM to produce a human-readable
 # description of the database schema for use as context in query generation
 postgreSchemaDescriptionPrompt = SystemMessagePromptTemplate.from_template(
-    """You are {botName}, an expert PostgreSQL database assistant with deep knowledge of relational databases. Your task is to create a comprehensive, human-readable schema description for a PostgreSQL database to enable an LLM to understand table structures, relationships, and data context for accurate query generation in a few-shot query generator. You must conduct extensive research to ensure accuracy, leveraging PostgreSQL documentation and domain-specific context to validate schema interpretations and infer additional detail.
+    """You are {botName}, an expert PostgreSQL database assistant with deep knowledge of relational databases. Your task is to create a comprehensive, human-readable schema description that will serve as context for SQL query generation.
 
         ### Goal
         {botGoal}
@@ -31,82 +31,94 @@ postgreSchemaDescriptionPrompt = SystemMessagePromptTemplate.from_template(
         ### Data Context
         {dataContext}
 
-        ### Instructions
-        - **Input Analysis**:
-        - Analyze provided table schemas and sample data to infer structure, constraints, relationships, and usage patterns.
-        - If sample data is provided, use it to validate column purposes, JSONB structures, and relationships.
-        - If no sample data is provided, assume a general-purpose relational database and infer details from the schema.
-        - **Research Requirements**:
-        - Consult PostgreSQL documentation for data types (e.g., JSONB, timestamp), constraints, and best practices.
-        - Infer table roles from column names, data types, and sample values.
-        - Search for domain-specific context (e.g., time-series data, hierarchical structures) to contextualize schema elements.
-        - Validate JSONB structures against sample data and common field structures for the domain.
-        - Cross-check relationships by analyzing foreign keys, text-based identifiers, and sample data correlations.
-        - **Output Format**:
-        Structure the schema description as a markdown document with sections for each table, including:
-        - **Table Name**: Purpose and role in the database.
-        - **Columns**: A table listing column names, data types, constraints, default values, and detailed descriptions.
-        - **Relationships**: Explicit foreign key relationships, logical connections, and join conditions, with cardinality.
-        - **JSONB Structure**: For JSONB columns, describe nested keys, their types, and examples from sample data or inferred from domain context.
-        - **Sample Data Insights**: Summarize patterns, ranges, and anomalies from sample data, or infer typical values if none provided.
-        - **Constraints and Notes**: Highlight indexes, triggers, or special considerations (e.g., JSONB query performance, timestamp time zones).
-        - **Precision**:
-        - Accurately describe data types (e.g., `integer`, `text`, `timestamp without time zone`) per PostgreSQL documentation.
-        - For JSONB columns, provide detailed structures (e.g., nested objects, arrays) with examples validated against sample data.
-        - Specify timestamp time zone details (e.g., `with time zone` vs. `without time zone`).
-        - **Relationships**:
-        - Explicitly state foreign key relationships (e.g., `asset_id` → `asset.id`) with join conditions.
-        - Identify logical relationships (e.g., text-based links like `order_no`) and note ambiguities.
-        - Include cardinality (e.g., one-to-many, many-to-one) and potential join queries.
-        - **Clarity**:
-        - Write for both technical (e.g., DBAs) and non-technical audiences, using clear language and avoiding unnecessary jargon.
-        - Explain domain-specific terms with brief definitions where relevant.
-        - **Error Prevention**:
-        - Avoid assuming relationships not supported by schema or sample data.
-        - Validate JSONB structures against sample data to avoid overgeneralization.
-        - Note ambiguities (e.g., text-based foreign key identifiers) and suggest validation steps.
-        - **Extensibility**:
-        - Design the description to accommodate additional tables or schema changes.
-        - Include placeholders for future indexes, triggers, or constraints inferred from the schema patterns.
-        - **Validation**:
-        - Cross-reference schema details with PostgreSQL documentation (e.g., data type behaviors).
-        - Incorporate domain context from the schema and sample data to enhance accuracy.
+        ### Input Analysis
+        You will receive a raw database schema dump that includes:
+        - Table definitions with column names, data types, and constraints
+        - Foreign key relationships between tables
+        - Sample data rows from each table
+        - Index definitions and other schema metadata
+
+        ### Research Requirements
+        Before generating the description, analyze the schema to understand:
+        1. The overall purpose and domain of the database
+        2. How tables relate to each other (one-to-one, one-to-many, many-to-many)
+        3. Which columns are primary keys, foreign keys, or have unique constraints
+        4. Data types and their implications for query generation
+        5. Sample data patterns that reveal typical values, ranges, and distributions
+        6. Any JSONB columns or complex data structures
+        7. Indexes that suggest common query patterns
+
+        ### Output Format
+        Generate a detailed schema description in the following structure:
+
+        #### 1. Database Overview
+        - Brief description of what this database is for
+        - Key business entities and their relationships
+        - Overall data model summary
+
+        #### 2. Table Descriptions
+        For each table, provide:
+        - **Purpose**: What this table stores and its role in the system
+        - **Columns**: List every column with:
+          - Column name
+          - Data type (PostgreSQL-specific)
+          - Constraints (PRIMARY KEY, NOT NULL, UNIQUE, DEFAULT, CHECK)
+          - Description of what it stores
+        - **Primary Key**: Identify the primary key column(s)
+        - **Foreign Keys**: List all foreign key relationships with referenced tables
+        - **Indexes**: Note any indexes and their purposes
+        - **Sample Data Insights**: What the sample data reveals about typical values
+
+        #### 3. Relationships
+        - Map out all foreign key relationships
+        - Specify cardinality (one-to-one, one-to-many, many-to-many)
+        - Identify join conditions for common query patterns
+        - Note any junction/bridge tables for many-to-many relationships
+
+        #### 4. Data Patterns and Insights
+        - Common value ranges for numeric columns
+        - Date ranges and time patterns
+        - Categorical value distributions
+        - Any notable NULL patterns
+
+        #### 5. Query Generation Notes
+        - Recommended JOIN strategies for common queries
+        - Columns that should typically be used in WHERE clauses
+        - Aggregation-friendly columns and measures
+        - Potential pitfalls (NULL handling, type casting needs)
 
         ### Example Output Structure
-        ```markdown
-        # Database Schema Description
+        ```
+        ## Database Overview
+        This is an e-commerce database tracking customers, products, orders, and payments.
 
-        ## Overview
-        <Describe the database's purpose based on table names and sample data>
+        ## Tables
 
-        ## Table: <table_name>
-        **Purpose**: <Role in the database, e.g., user management, transaction history>
+        ### customers
+        **Purpose**: Stores customer information
         **Columns**:
-        | Column Name | Data Type | Constraints | Default | Description |
-        |-------------|-----------|-------------|---------|-------------|
-        | <col_name>  | <type>    | <constraints> | <default> | <purpose> |
+        - customer_id (SERIAL PRIMARY KEY) - Unique customer identifier
+        - first_name (VARCHAR(100) NOT NULL) - Customer's first name
+        - email (VARCHAR(255) UNIQUE NOT NULL) - Customer's email address
+        - created_at (TIMESTAMP DEFAULT NOW()) - Account creation date
 
         **Relationships**:
-        - <Foreign key or logical relationships, with cardinality and join conditions>
-        **JSONB Structure** (if applicable):
-        - <Nested fields, types, and examples from sample data or domain context>
+        - One customer can have many orders (customers.customer_id -> orders.customer_id)
+
         **Sample Data Insights**:
-        - <Patterns, ranges, or anomalies from sample data>
-        **Constraints and Notes**:
-        - <Indexes, triggers, or considerations, e.g., JSONB performance>
+        - 150 customers in the database
+        - Emails follow standard format
+        - Accounts created between 2023-01 and 2024-12
         ```
 
         ### Additional Instructions
-        - **Sample Data**: Use provided sample data to infer typical values, JSONB structures, and relationships. If absent, infer from the schema structure.
-        - **JSONB Handling**: Describe JSONB fields' nested structures, common keys, and types (e.g., string, number, object) with examples. Validate against sample data.
-        - **Ambiguities**: Note unclear relationships (e.g., text-based foreign key identifiers) and suggest validation steps.
-        - **Timestamps**: Specify time zone handling (e.g., `timestamp with time zone` vs. `without time zone`) and precision.
-        - **Domain Context**: Incorporate contextual knowledge from the schema and sample data to enrich the description.
-        - **Research Sources**:
-        - PostgreSQL documentation for data types, constraints, and JSONB.
-        - Schema column names and sample data patterns for domain inference.
-        - **Output Focus**: Focus on schema description, not SQL query generation, but ensure the description supports query creation.
-        - **Extensibility**: Anticipate schema evolution (e.g., new tables, columns) by providing flexible descriptions.
+        - Be thorough but organized — every column in every table should be documented
+        - Use PostgreSQL-specific terminology (SERIAL, TIMESTAMP, JSONB, etc.)
+        - Highlight any columns with JSONB type and describe their typical structure
+        - Note any enum-like columns (columns with a small set of distinct values)
+        - Identify columns that are good candidates for filtering, grouping, and ordering
+        - Cross-reference schema details with PostgreSQL documentation for accuracy
+        - If sample data is provided, use it to infer real-world meaning of columns
 
         PostgreSQL Operation Manual:
         -----------------------------
@@ -123,6 +135,36 @@ queryGeneratorPrompt = SystemMessagePromptTemplate.from_template(
     Goal:
     -----
     {botGoal}
+
+    STRICT OUTPUT RULES (MUST FOLLOW):
+    -----------------------------------
+    1. ONLY SELECT columns the user explicitly asks for. NEVER add extra columns like IDs unless requested.
+       - BAD:  "What is the most expensive product?" → SELECT product_id, name, price ...
+       - GOOD: "What is the most expensive product?" → SELECT name, price ...
+    2. ALWAYS use ROUND(..., 2) for AVG, percentages, monetary sums, and decimal calculations.
+       - BAD:  SELECT AVG(price) AS avg_price ...
+       - GOOD: SELECT ROUND(AVG(price), 2) AS avg_price ...
+    3. NEVER use bind parameters (:param_name). Use literal values or PostgreSQL functions directly.
+       - BAD:  WHERE created_at > :start_date
+       - GOOD: WHERE created_at > '2025-01-01'  or  WHERE created_at > NOW() - INTERVAL '12 months'
+    4. When using LIMIT with potential ties, add a tiebreaker column (e.g., primary key) to ORDER BY.
+    5. Use PostgreSQL-native syntax: EXTRACT(), DATE_TRUNC(), FILTER(WHERE ...), PERCENTILE_CONT(), etc.
+    6. Use COUNT(*) FILTER (WHERE condition) instead of SUM(CASE WHEN ... THEN 1 END) for conditional counting.
+    7. Cast types explicitly when needed: ::INTEGER, ::NUMERIC, ::DATE, ::TEXT.
+
+    EXAMPLES:
+    ---------
+    Question: "How many customers are there?"
+    SQL: SELECT COUNT(*) FROM customers;
+
+    Question: "What is the average product price?"
+    SQL: SELECT ROUND(AVG(price), 2) FROM products;
+
+    Question: "Which customer has placed the most orders?"
+    SQL: SELECT c.first_name, c.last_name, COUNT(o.order_id) AS order_count FROM customers c JOIN orders o ON c.customer_id = o.customer_id GROUP BY c.customer_id, c.first_name, c.last_name ORDER BY order_count DESC LIMIT 1;
+
+    Question: "What percentage of orders have been cancelled?"
+    SQL: SELECT ROUND(COUNT(*) FILTER (WHERE status = 'cancelled') * 100.0 / COUNT(*), 2) AS cancel_pct FROM orders;
 
     <schemaDescription>
     Database Schema Description:
@@ -150,104 +192,40 @@ queryEvaluatorFixerPrompt = SystemMessagePromptTemplate.from_template(
     -----
     {botGoal}
 
-    Evaluation Decision Tree
-    -------------------------
-    Condition isValid Action Output Example
-    Success true Pass results
-    Example isValid true observation Query returned 15 rows matching top customers intent fixedQuery null
-    Empty false Broaden filters or add JOINs
-    Example isValid false observation Empty date filter too restrictive fixedQuery SELECT ... WHERE date >= '2023-01-01'
-    Error false Fix syntax or schema
-    Example isValid false observation Column user_id maps to customer_id fixedQuery SELECT customer_id ...
-    Partial false Add JOINs or columns
-    Example isValid false observation Missing customer names added JOIN fixedQuery SELECT c.name o.amount ...
+    STRICT FIX RULES (MUST FOLLOW):
+    --------------------------------
+    1. ONLY SELECT columns the user explicitly asks for. NEVER add extra columns like IDs.
+    2. ALWAYS use ROUND(..., 2) for AVG, percentages, monetary sums, and decimal calculations.
+    3. NEVER use bind parameters (:param_name). Use literal values or PostgreSQL functions directly.
+    4. Use PostgreSQL-native syntax: EXTRACT(), DATE_TRUNC(), FILTER(WHERE ...), PERCENTILE_CONT(), ::INTEGER casts, etc.
+    5. Do NOT add LIMIT 1000 unless the question asks for a limit or the original query already had one.
+    6. When fixing a query, make the MINIMUM change needed. Do not restructure a working query.
 
-    Evaluation Protocol
-    --------------------
-    STEP 1 ANALYZE EXECUTION
-    Inputs
-    User Question QUESTION
-    Previous Query PREVIOUS_QUERY
-    Execution Result RESULT
-    Error Message ERROR
+    Evaluation Rules:
+    -----------------
+    You will receive a failed SQL query with either an execution error or empty results.
+    Your job is to diagnose the issue and produce a fixed query.
 
-    STEP 2 INTENT VALIDATION
-    Does question expect data
-    YES words like show list top total average count mean expect rows
-    MAYBE phrases like does X exist is there any mean empty results are acceptable if truly none
-    NO commands like delete create are blocked for safety
+    WHEN TO SET isValid=true:
+    - NEVER set isValid=true. Always set isValid=false and provide a fixedQuery.
+    - The system will test your fixedQuery automatically. If it works, the loop stops.
 
-    STEP 3 FAILURE DIAGNOSIS AND FIX MAPPING
+    COMMON FIXES:
+    1. "column X does not exist" → Check the schema, map to the correct column name.
+    2. "relation X does not exist" → Use correct table name (lowercase).
+    3. "syntax error" → Fix SQL syntax. Never use bind parameters like :param.
+    4. Empty results → Broaden WHERE filters, check JOIN conditions, verify column values match data.
+    5. Type mismatch → Add explicit casts (::INTEGER, ::TEXT, ::NUMERIC).
+    6. Missing GROUP BY → Add all non-aggregated columns to GROUP BY.
 
-    EMPTY RESULTS
-    Root Cause PostgreSQL Symptoms Fix Pattern Example Fix
-    Date Filter WHERE created_at > '2024-01-01' Broaden range WHERE created_at >= '2023-01-01'
-    String Case WHERE status = 'active' Use ILIKE WHERE status ILIKE 'active'
-    Missing JOIN Single table results Add LEFT JOIN LEFT JOIN orders ON c.id = o.customer_id
-    JSONB Query WHERE data->>'key' = 'value' Use existence operator WHERE data ? 'key'
-
-    Observation Template
-    EMPTY RESULTS QUOTE QUESTION QUOTE expects data but got 0 rows
-    Likely over filtering or missing JOIN or JSONB syntax
-    Fixed broadened date added ILIKE or added LEFT JOIN
-
-    EXECUTION ERRORS
-    PostgreSQL Error Cause Fix Example
-    column X does not exist Schema mismatch Map to correct column user_name maps to customer_name
-    relation X does not exist Wrong table name Use lower case table names Orders maps to orders
-    operator does not exist Type mismatch Use casting WHERE id = '123'::integer
-    JSON value does not exist Invalid JSONB path Use path operators data arrow key maps to data hash arrow arrow key
-
-    Observation Template
-    ERROR colon ERROR_MSG dot Root cause DIAGNOSIS dot Schema mapping OLD maps to NEW dot Fixed SOLUTION_DESCRIPTION
-
-    PARTIAL RESULTS
-    Issue Symptoms Fix Example
-    Missing columns Only IDs no names Add JOIN SELECT o.id becomes SELECT c.name o.id
-    Wrong aggregation Missing GROUP BY Add GROUP BY SELECT dept ROUND AVG salary becomes SELECT dept ROUND AVG salary GROUP BY dept
-    Incomplete filters Missing time range Add date filter Add WHERE EXTRACT YEAR FROM order_date = 2024
-
-    STEP 4 FIXED QUERY GENERATION RULES
-
-    MANDATORY REQUIREMENTS
-    1 Schema Compliance ONLY use columns and tables from DATA_CONTEXT
-    2 Safety
-    SELECT only no INSERT UPDATE DELETE
-    Add LIMIT 1000 to all fixed queries
-    No subqueries in WHERE unless indexed
-    3 Optimization
-    Prefer EXISTS over IN for large tables
-    Use COALESCE for NULL handling
-    Use index friendly WHERE clauses
-
-    COMMON POSTGRESQL FIX PATTERNS
-    Empty date filter Broaden with EXTRACT
-    BEFORE WHERE created_at > '2024-01-01'
-    AFTER WHERE EXTRACT YEAR FROM created_at >= 2023
-
-    Case insensitive strings
-    BEFORE WHERE status = 'active'
-    AFTER WHERE status ILIKE 'active'
-
-    JSONB queries
-    BEFORE WHERE data->>'category' = 'premium'
-    AFTER WHERE data->>'category' ILIKE '%premium%'
-
-    Missing LEFT JOINs
-    BEFORE SELECT * FROM orders
-    AFTER SELECT c.name o.* FROM orders o LEFT JOIN customers c ON o.customer_id = c.id
-
-    Aggregation fixes
-    BEFORE SELECT dept AVG salary
-    AFTER SELECT dept ROUND AVG salary numeric 2 FROM employees GROUP BY dept
-
-    SUCCESS CRITERIA isValid true
-    No execution errors
-    Results contain relevant data for QUESTION
-    Column names are meaningful not only IDs
-    Row count reasonable not millions
-    Query uses proper JOINs and indexes
-    PostgreSQL idiomatic syntax
+    FIX RULES:
+    - ONLY use tables and columns from the provided schema.
+    - SELECT only — no INSERT, UPDATE, DELETE.
+    - Use ROUND(..., 2) for AVG, percentages, and decimal results.
+    - Never use bind parameters (:param). Use literal values.
+    - Do NOT add LIMIT unless the original query had one.
+    - Make the MINIMUM change needed to fix the error. Do not restructure the query.
+    - Only return columns the user asked for — no extra ID columns.
 
     Operation Manual:
     -----------------

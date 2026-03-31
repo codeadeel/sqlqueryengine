@@ -2,9 +2,11 @@
 
 # %%
 # Importing Necessary Libraries
+import json
 import logging
+import re
 import warnings
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
@@ -30,8 +32,16 @@ logger = logging.getLogger(__name__)
 # Structured output schema for SQL generation — the LLM produces this
 class AutomatedQuerySchema(BaseModel):
     """Schema for automated SQL query generation."""
-    description: str = Field(..., description="A description of the query and what it retrieves.")
-    query: str = Field(..., description="The SQL query to execute against the database.")
+    description: str = Field(default="", description="A description of the query and what it retrieves.")
+    query: str = Field(default="", description="The SQL query to execute against the database.")
+    sql: str = Field(default="", description="Alias for query — some models return 'sql' instead of 'query'.")
+
+    @model_validator(mode="after")
+    def normalize_query_field(self):
+        """Accept both 'query' and 'sql' as the SQL field."""
+        if not self.query and self.sql:
+            self.query = self.sql
+        return self
 
 # %%
 # Natural language to SQL generator
@@ -105,7 +115,6 @@ class QueryGenerator:
         self.splitIdentifier = splitIdentifier
 
         self.llm = ChatOpenAI(**self.llmParams)
-        self.queryGeneratorInstance = self.llm.with_structured_output(AutomatedQuerySchema)
 
         self.postgreDB = PostgresDB(**self.dbParams)
         self.chatInstance = SessionManager(self.redisParams, self.agentName)
@@ -176,7 +185,7 @@ class QueryGenerator:
             logger.info(f"[ {chatID} | {self.agentName} ] : Building query generator context")
             chatParser = ChatPromptTemplate.from_messages([queryGeneratorPrompt]).format_messages(
                 botName=self.botName,
-                botGoal=f"You are a helpful SQL assistant named {self.botName} that helps users build PostgreSQL queries based on their requirements. Use the provided database schema and context. Ensure all queries are syntactically correct, read-only, and do not delete data. Output LIMIT <= 100.",
+                botGoal=f"You are a helpful SQL assistant named {self.botName} that helps users build PostgreSQL queries based on their requirements. Use the provided database schema and context. Ensure all queries are syntactically correct and read-only (SELECT only). Only add LIMIT if the user asks for a specific number of results (e.g., 'top 5', 'best 3'). Never use bind parameters like :param — use literal values. Return ONLY the SQL query, nothing else.",
                 dataDescription=dbDescription.content,
                 dataContext=schemaParsed,
                 postgreManual=postgreManualData
@@ -191,9 +200,10 @@ class QueryGenerator:
         # Generate the SQL query from the user prompt
         schemaDump, schemaParsed = self.postgreDB.getParsedSchemaDump(expLen=schemaExamples)
         logger.info(f"[ {chatID} | {self.agentName} ] : Generating SQL query for prompt")
-        resp = self.queryGeneratorInstance.invoke(chatParser + [HumanMessage(content=f"{basePrompt}")])
+        rawResp = self.llm.invoke(chatParser + [HumanMessage(content=f"{basePrompt}")])
+        resp = self._parseResponse(rawResp.content)
         chatParser.append(HumanMessage(content=basePrompt))
-        self.chatInstance.postUserChatContext(chatID, "dbQueryGenerator", chatParser + [AIMessage(content=str(resp))])
+        self.chatInstance.postUserChatContext(chatID, "dbQueryGenerator", chatParser + [AIMessage(content=rawResp.content)])
 
         # Fetch updated histories for the response payload
         _, dbSchemaDescriptionHistory = self.chatInstance.getUserChatContext(chatID, "dbSchemaDescription")
@@ -215,6 +225,44 @@ class QueryGenerator:
                 "sqlQuery": resp.query.replace("\n", " ")
             }
         }
+
+    @staticmethod
+    def _parseResponse(content: str) -> "AutomatedQuerySchema":
+        """
+        Extract SQL query from LLM response. Tries JSON first, then
+        falls back to extracting SQL from code blocks or raw text.
+        """
+        # Strip <think> tags first for cleaner parsing
+        cleaned = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
+
+        # Try JSON parse first
+        try:
+            data = json.loads(cleaned)
+            return AutomatedQuerySchema(**data)
+        except (json.JSONDecodeError, Exception):
+            pass
+
+        # Try extracting JSON from within the text
+        jsonMatch = re.search(r'\{[^{}]*"(?:query|sql)"[^{}]*\}', cleaned, re.DOTALL)
+        if jsonMatch:
+            try:
+                data = json.loads(jsonMatch.group())
+                return AutomatedQuerySchema(**data)
+            except (json.JSONDecodeError, Exception):
+                pass
+
+        # Extract SQL from code blocks
+        codeBlock = re.search(r'```(?:sql)?\s*\n?(.*?)\n?```', cleaned, re.DOTALL | re.IGNORECASE)
+        if codeBlock:
+            return AutomatedQuerySchema(query=codeBlock.group(1).strip())
+
+        # Last resort: find SELECT statement
+        selectMatch = re.search(r'(SELECT\s+.+?;)', cleaned, re.DOTALL | re.IGNORECASE)
+        if selectMatch:
+            return AutomatedQuerySchema(query=selectMatch.group(1).strip())
+
+        # If nothing works, return the whole content as the query
+        return AutomatedQuerySchema(query=cleaned)
 
 
 # %%

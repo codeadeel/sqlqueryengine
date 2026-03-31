@@ -147,9 +147,17 @@ Raw schema dumps (column names + data types) are not always enough context for a
 
 This description is cached in Redis and reused on all subsequent calls for the same `chatID`, so the cost is paid only once per session.
 
-### Structured output
+### Response parsing
 
-The LLM is bound to the `AutomatedQuerySchema` Pydantic model via LangChain's `with_structured_output()`. This forces the model to always return exactly `description` and `query`, eliminating free-form text parsing.
+The LLM response is parsed by the static `_parseResponse()` method into an `AutomatedQuerySchema` Pydantic model containing `description`, `query`, and an optional `sql` alias. The parser uses a multi-strategy fallback chain to handle diverse LLM output formats:
+
+1. **JSON parse** — try to parse the entire response as JSON.
+2. **Embedded JSON extraction** — regex-extract a JSON object containing `query` or `sql` from surrounding text.
+3. **Code block extraction** — extract SQL from `` ```sql `` or `` ``` `` fenced blocks.
+4. **SELECT statement extraction** — regex-match a `SELECT … ;` statement anywhere in the response.
+5. **Raw fallback** — treat the entire cleaned response as the query.
+
+Before any strategy runs, `<think>…</think>` tags (emitted by reasoning models like Qwen) are stripped. A `model_validator` normalises the `sql` alias to `query` so both field names are accepted from any model.
 
 ## 5. Stage 2 — SQL Evaluation and Repair
 
@@ -163,23 +171,23 @@ Stage 2 takes the SQL query from Stage 1 (or any externally supplied query) and 
 
 ```mermaid
 flowchart TD
-    Start(["Start<br/>currentQuery = baseQuery<br/>currentObservation = baseDescription<br/>retryCounter = 0"])
+    Start(["Start<br/>currentQuery = baseQuery<br/>bestResults = empty<br/>retryCounter = 0"])
     Check{"retryCounter < retryCount<br/>AND validator = False?"}
     Execute["Execute currentQuery<br/>against PostgreSQL"]
     Errors{"psycopg.Error<br/>or Exception?"}
     CollectErrors["Collect error details:<br/>type, message, SQLSTATE,<br/>diag fields, traceback"]
-    NoErrors["errorStr = No errors encountered"]
+    TrackBest{"No errors AND<br/>rows > bestResults?"}
+    UpdateBest["Update bestQuery,<br/>bestResults, bestObservation"]
+    EarlyAccept{"No errors AND<br/>rows > 0?"}
+    Accept["validator = True<br/>Accept immediately<br/>no LLM call needed"]
     LogPre["Log to Redis:<br/>Current Query, Observation, Errors"]
-    InvokeLLM["Invoke LLM evaluator<br/>returns QueryEvaluationSchema<br/>isValid, observation,<br/>fixedQuery, modifiedPrompt"]
-    LogPost["Log to Redis:<br/>LLM Judgement, Observation,<br/>Fixed Query, Modified Prompt"]
-    IsValid{"evalQuery.isValid<br/>= True?"}
-    HasRows{"len(results) > 0?"}
-    MarkValid["validator = True<br/>Query succeeded"]
-    EmptyRetry["Query ran but returned<br/>empty results<br/>validator stays False"]
-    InvalidRetry["Errors or invalid results<br/>validator stays False"]
-    Increment["retryCounter += 1<br/>currentQuery = evalQuery.fixedQuery<br/>currentObservation = evalQuery.observation"]
+    InvokeLLM["Invoke LLM evaluator<br/>returns QueryEvaluationSchema:<br/>observation, fixedQuery"]
+    LogPost["Log to Redis:<br/>LLM Observation, Fixed Query"]
+    UpdateState["currentQuery = fixedQuery<br/>currentObservation = observation<br/>retryCounter += 1"]
     SaveHistory["Evaluation chat history<br/>logged to Redis"]
+    HasBest{"bestResults<br/>non-empty?"}
     ReturnSuccess(["Return: currentQuery<br/>currentObservation, results"])
+    ReturnBest(["Return: bestQuery<br/>bestResults — best attempt"])
     ReturnFailure(["Return:<br/>currentQuery = None<br/>results = empty list"])
 
     Start --> Check
@@ -187,24 +195,28 @@ flowchart TD
     Check -->|"No"| SaveHistory
     Execute --> Errors
     Errors -->|"Yes"| CollectErrors
-    Errors -->|"No"| NoErrors
+    Errors -->|"No"| TrackBest
     CollectErrors --> LogPre
-    NoErrors --> LogPre
+    TrackBest -->|"Yes"| UpdateBest
+    TrackBest -->|"No"| EarlyAccept
+    UpdateBest --> EarlyAccept
+    EarlyAccept -->|"Yes"| Accept
+    EarlyAccept -->|"No"| LogPre
+    Accept -->|"retryCounter += 1"| Check
     LogPre --> InvokeLLM
     InvokeLLM --> LogPost
-    LogPost --> IsValid
-    IsValid -->|"True"| HasRows
-    IsValid -->|"False"| InvalidRetry
-    HasRows -->|"Yes"| MarkValid
-    HasRows -->|"No"| EmptyRetry
-    MarkValid --> Increment
-    EmptyRetry --> Increment
-    InvalidRetry --> Increment
-    Increment --> Check
-    SaveHistory --> ReturnSuccess
-    SaveHistory --> ReturnFailure
-    MarkValid -.->|"breaks loop on next Check"| SaveHistory
+    LogPost --> UpdateState
+    UpdateState --> Check
+    SaveHistory -->|"validator = True"| ReturnSuccess
+    SaveHistory -->|"validator = False"| HasBest
+    HasBest -->|"Yes"| ReturnBest
+    HasBest -->|"No"| ReturnFailure
 ```
+
+Two key design decisions in the repair loop:
+
+- **Early accept.** When a query executes without errors and returns rows, the loop accepts it immediately without invoking the LLM evaluator. This prevents regressions where the LLM rewrites a working query into a broken one.
+- **Best-result tracking.** Every successful execution (no errors, at least one row) is compared against the best result seen so far (by row count). If retries are exhausted without the loop converging, the best result is returned rather than an empty failure.
 
 ### Schema context resolution
 
@@ -232,18 +244,21 @@ flowchart LR
 
 This means the evaluator never blocks on unavailable context — it always falls through to a working source.
 
-### Structured output
+### Response parsing
 
-The LLM is bound to `QueryEvaluationSchema`:
+The LLM response is parsed by the static `_parseEvalResponse()` method into a `QueryEvaluationSchema` Pydantic model. Like the generator's parser, it uses a multi-strategy fallback chain (JSON → embedded JSON → code block → SELECT regex → raw text) and strips `<think>` tags before parsing.
+
+`QueryEvaluationSchema` fields:
 
 | Field | Type | Purpose |
 |---|---|---|
-| `isValid` | `bool` | `True` if query executed and returned relevant rows |
-| `modifiedUserPrompt` | `str` | Optionally adjusted user question (improves next attempt) |
+| `isValid` | `bool` | Always `False` — the system verifies correctness by executing the query, never trusting the LLM's self-assessment |
+| `modifiedUserPrompt` | `str` | Optionally adjusted user question (used as context on the next attempt) |
 | `observation` | `str` | Detailed diagnosis of what was wrong |
-| `fixedQuery` | `str` | Corrected SQL |
+| `fixedQuery` | `str` | Corrected SQL query |
+| `fixed_query` / `sql` / `query` | `str` | Aliases for `fixedQuery` — a `model_validator` normalises whichever field the LLM returns |
 
-An important subtlety: even when `isValid=True`, if `len(results) == 0` the loop treats it as a failure and sets `validator=False`. The query must both pass validation **and** return rows.
+The evaluator prompt instructs the LLM to **always** set `isValid=false` and provide a `fixedQuery`. The system never trusts the LLM's validity assessment — it verifies by executing the fixed query on the next loop iteration.
 
 ## 6. Schema Context Caching
 
@@ -310,8 +325,9 @@ Every significant step in the pipeline logs a message to the channel named by `c
 flowchart LR
     subgraph Pipeline["Pipeline execution"]
         direction TB
+        P0["On early accept:<br/>Query executed successfully<br/>with N rows"]
         P1["Before each LLM call:<br/>Current Query logged<br/>Current Observation logged<br/>Execution Errors logged"]
-        P2["After each LLM call:<br/>LLM Judgement logged<br/>LLM Observation logged<br/>Fixed Query logged<br/>Modified Prompt logged"]
+        P2["After each LLM call:<br/>LLM Observation logged<br/>Fixed Query logged<br/>Will verify on next iteration"]
     end
 
     Redis["Redis<br/>channel: chatID"]
@@ -334,6 +350,14 @@ This layer wraps the entire `SQLQueryEngine` pipeline behind the OpenAI chat com
 | `GET` | `/v1/models` | Returns a single model entry named by `COMPLETIONS_MODEL_NAME` |
 | `POST` | `/v1/chat/completions` | Chat completions (streaming SSE or single JSON) |
 | `POST` | `/v1/completions` | Text completions (legacy shape) |
+
+### Environment validation
+
+Before executing any request, the completions routes call `_validateEnvConnParams()` which checks that all required connection environment variables (LLM, PostgreSQL, Redis) are configured. If any are missing, a `500` response is returned immediately with a clear error listing the missing variables — this surfaces configuration issues at the point of request rather than deep inside the engine.
+
+### Pipeline defaults
+
+The `/v1/*` routes have no query parameters for pipeline tuning. Instead, they read defaults from environment variables: `DEFAULT_RETRY_COUNT` (default `5`), `DEFAULT_SCHEMA_EXAMPLES` (default `5`), and `DEFAULT_FEEDBACK_EXAMPLES` (default `3`). These are set once and apply to all completions requests.
 
 ### Chat ID derivation
 
@@ -362,10 +386,10 @@ This design ensures that:
 
 The final response wraps engine progress in `<think>…</think>` tags. Reasoning-aware clients like OpenWebUI collapse these into a collapsible "thinking" block, so the user sees clean SQL results in the chat bubble while the full repair loop trace is available on demand.
 
-```
+````
 <think>
   [schema description chunks]
-  [QueryFixAttempt#1: current query, errors, LLM judgement, fixed query]
+  [QueryFixAttempt#1: current query, errors, fixed query]
   [QueryFixAttempt#2: ...]
 </think>
 
@@ -380,6 +404,7 @@ SELECT COUNT(*) FROM orders WHERE created_at >= NOW() - INTERVAL '30 days'
 | count |
 | --- |
 | 842 |
+````
 
 
 ## 9. Streaming Architecture
@@ -439,9 +464,11 @@ Key methods:
 |---|---|
 | `listTables()` | Lists all tables in the `public` schema |
 | `getTableSchema(table)` | Returns `(column_name, data_type)` pairs for a table |
+| `getFullTableDump(table)` | Returns all rows from a table as a list of tuples |
 | `getSchemaDump(expLen)` | Returns a dict of schema + sample rows per table |
 | `getParsedSchemaDump(expLen)` | Returns the raw dict **and** a formatted string ready for LLM prompts |
-| `queryExecutor(query)` | Executes a query, returns `list[dict]` with column names as keys |
+| `queryExecutor(query)` | Executes a query, returns `list[dict]` with column names as keys; serialises `Decimal` → `float`, `datetime`/`date` → `str` |
+| `close()` | Closes the cursor and connection |
 
 ### `sessionManager.py` — `SessionManager`
 
@@ -467,17 +494,21 @@ The `connectionDependency` function is a FastAPI dependency that exposes all 13 
 
 ### `promptTemplates.py` — LangChain prompt definitions
 
-Defines three `SystemMessagePromptTemplate` objects:
+Defines four `SystemMessagePromptTemplate` objects (three are actively used):
 
 | Template | Used by | Purpose |
 |---|---|---|
-| `postgreSchemaDescriptionPrompt` | `QueryGenerator`, `QueryEvaluator._buildFromScratch` | Instructs the LLM to produce a comprehensive schema description document |
-| `queryGeneratorPrompt` | `QueryGenerator` | System prompt carrying schema description + raw schema + PostgreSQL guidelines for query generation |
-| `queryEvaluatorFixerPrompt` | `QueryEvaluator` | System prompt with a detailed evaluation decision tree and fix-mapping rules |
+| `postgreSystemPrompt` | (unused — available for custom integrations) | General-purpose PostgreSQL assistant system prompt |
+| `postgreSchemaDescriptionPrompt` | `QueryGenerator`, `QueryEvaluator._buildFromScratch` | Instructs the LLM to produce a comprehensive schema description document with detailed output format guidelines |
+| `queryGeneratorPrompt` | `QueryGenerator` | System prompt with strict output rules (column selection, ROUND for decimals, no bind parameters, deterministic ordering), worked examples, schema description, raw schema, and PostgreSQL guidelines |
+| `queryEvaluatorFixerPrompt` | `QueryEvaluator` | System prompt with strict fix rules, common fix patterns (column not found, relation not found, empty results, type mismatch), and minimum-change repair philosophy |
 
 ### `sqlGuidelines.py`
 
-Contains `postgreManualData` and `postgreManualDataEval` — static string corpora injected into the `postgreManual` variable of every prompt. These encode PostgreSQL-specific best practices (JSONB operators, ILIKE, EXISTS vs IN, EXTRACT, COALESCE, etc.) that the LLM should apply when writing and fixing queries.
+Contains two static string corpora injected into the `postgreManual` template variable:
+
+- **`postgreManualData`** — used during generation. Covers critical output rules (column selection, numeric precision with ROUND, no bind parameters, deterministic ordering), input/output format guidelines, safety rules (SELECT-only default), SQL construction steps, common patterns (joins, CTEs, window functions, aggregates), and formatting conventions.
+- **`postgreManualDataEval`** — used during evaluation. A condensed variant focused on fix rules (minimum changes, no added LIMIT, explicit casts), evaluation criteria (syntax, semantic, performance), common issues and their fixes, and rewriting guidelines that preserve original query structure.
 
 ## 11. Class and Method Reference
 
@@ -523,6 +554,7 @@ QueryGenerator(llmParams, dbParams, redisParams, botName, agentName, splitIdenti
 | Method | Returns | Description |
 |---|---|---|
 | `process(chatID, schemaExamples, basePrompt)` | `dict` | Full generation flow — handles session init and schema caching internally |
+| `_parseResponse(content)` | `AutomatedQuerySchema` | (static) Multi-strategy parser: JSON → embedded JSON → code block → SELECT regex → raw text |
 
 ### `QueryEvaluator` — `queryEvaluator.py`
 
@@ -533,6 +565,7 @@ QueryEvaluator(llmParams, dbParams, redisParams, botName, agentName, splitIdenti
 | Method | Returns | Description |
 |---|---|---|
 | `process(chatID, basePrompt, baseQuery, baseDescription, retryCount, generatorContextKey, schemaExamples, feedbackExamples, localPayload, hardLimit)` | `dict` | Full evaluation + repair loop |
+| `_parseEvalResponse(content)` | `QueryEvaluationSchema` | (static) Multi-strategy parser — same fallback chain as `_parseResponse` |
 | `_buildFromPayload(generatorContextKey, localPayload)` | `dict` | (internal) Extracts schema context from a prior `QueryGenerator` response |
 | `_buildFromRedis(chatID, generatorContextKey)` | `dict` | (internal) Reads cached schema context from Redis |
 | `_buildFromScratch(chatID, generatorContextKey, schemaExamples)` | `dict` | (internal) Generates schema context fresh from DB + LLM |
@@ -731,7 +764,7 @@ All parameters can be set as environment variables (for production) **or** overr
 | `BOT_NAME` | `SQLBot` | Display name for the assistant in all prompts |
 | `COMPLETIONS_MODEL_NAME` | value of `BOT_NAME` | Model name returned by `/v1/models` and echoed in responses |
 | `OPENAI_API_KEY` | `""` (auth disabled) | Comma-separated Bearer tokens for `/v1/*` routes |
-| `SPLIT_IDENTIFIER` | `<\|-/\|->` | Delimiter in Redis Pub/Sub messages (separates event tag from content) |
+| `SPLIT_IDENTIFIER` | `<\|-/\|-/>` | Delimiter in Redis Pub/Sub messages (separates event tag from content) |
 
 ## 15. Pub/Sub Message Format Reference
 
@@ -741,7 +774,7 @@ Every message published to `{chatID}` follows this format:
 </{component}:{event}>{SPLIT_IDENTIFIER}{content}
 ```
 
-`SPLIT_IDENTIFIER` defaults to `<|-/|->`. Content after the identifier is what gets displayed to the user.
+`SPLIT_IDENTIFIER` defaults to `<|-/|-/>`. Content after the identifier is what gets displayed to the user.
 
 ### Messages published during Stage 1 (schema generation)
 
@@ -751,7 +784,13 @@ Every message published to `{chatID}` follows this format:
 
 ### Messages published during Stage 2 (repair loop)
 
-Published **before** each LLM call (execution visibility):
+**On early accept** (query executed successfully with rows — no LLM call):
+
+| Component | Event | Content |
+|---|---|---|
+| `SQLQueryEvaluator` | `QueryFixAttempt#N` | `Query executed successfully with {rowCount} rows` |
+
+**Before each LLM call** (query failed or returned empty):
 
 | Component | Event | Content |
 |---|---|---|
@@ -759,22 +798,13 @@ Published **before** each LLM call (execution visibility):
 | `SQLQueryEvaluator` | `QueryFixAttempt#N` | `Current Observation : {text}` |
 | `SQLQueryEvaluator` | `QueryFixAttempt#N` | `Execution Errors : {error or "No errors encountered."}` |
 
-Published **after** each LLM call (repair visibility):
+**After each LLM call** (repair visibility):
 
 | Component | Event | Content |
 |---|---|---|
-| `SQLQueryEvaluator` | `QueryFixAttempt#N` | `LLM Judgement : True / False` |
 | `SQLQueryEvaluator` | `QueryFixAttempt#N` | `LLM Observation : {text}` |
 | `SQLQueryEvaluator` | `QueryFixAttempt#N` | `Fixed Query : {sql}` |
-| `SQLQueryEvaluator` | `QueryFixAttempt#N` | `Modified Prompt : {text}` |
-
-Status signals at end of each attempt:
-
-| Content |
-|---|
-| `Query validated successfully` |
-| `Query validation failed, retrying` |
-| `Query valid but empty results, retrying` |
+| `SQLQueryEvaluator` | `QueryFixAttempt#N` | `Will verify fixed query on next iteration` |
 
 The schema description during Stage 2 `_buildFromScratch`:
 

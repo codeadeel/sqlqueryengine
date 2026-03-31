@@ -17,14 +17,14 @@ services:
       # Ollama:  LLM_BASE_URL=http://host.docker.internal:11434/v1
       # vLLM:    LLM_BASE_URL=http://host.docker.internal:8000/v1
       # OpenAI:  LLM_BASE_URL=https://api.openai.com/v1
-      - LLM_BASE_URL=http://10.190.147.198:8001/v1
+      - LLM_BASE_URL=http://host.docker.internal:8001/v1
       - LLM_MODEL=Qwen3-Coder-30B-A3B-Instruct
       - LLM_API_KEY=vllm123
       - LLM_TEMPERATURE=0.7
 
       # PostgreSQL Configuration
       # Point this at your own Docker PostgreSQL container IP/hostname
-      - POSTGRES_HOST=10.128.0.128
+      - POSTGRES_HOST=host.docker.internal
       - POSTGRES_PORT=5141
       - POSTGRES_DB=mesdb
       - POSTGRES_USER=mesuser
@@ -110,7 +110,7 @@ services:
 networks:
   sqlEngineNetwork:
     driver: bridge
-  
+
 volumes:
   sqlEngineRedis:
     driver: local
