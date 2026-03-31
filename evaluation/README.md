@@ -58,19 +58,19 @@ evaluation/
 │   ├── ecommerce.py        ← 40 questions for eval_ecommerce
 │   ├── university.py       ← 40 questions for eval_university
 │   └── hospital.py         ← 40 questions for eval_hospital
-└── results/                ← Output directory (created at runtime)
-    ├── questions.json      ← Questions with gold results (from questionRunner)
-    ├── data_manifest.json  ← Row counts per table per database
-    ├── results_config_a.json
-    ├── results_config_b.json
-    ├── results_config_c.json
-    ├── summary.json        ← Aggregated metrics
-    └── runs/               ← Archived results from previous model runs
+└── results/                ← Output directory
+    └── runs/               ← Archived benchmark results (one folder per model)
         ├── qwen3-32b/
         ├── llama-3.3-70b/
         ├── llama-4-scout-17b/
         ├── gpt-oss-20b/
         └── gpt-oss-120b/
+            ├── data_manifest.json      ← Row counts per table per database (verifies seeding)
+            ├── questions.json          ← All questions with gold queries and gold results
+            ├── results_config_a.json   ← Per-question results for Config A (retryCount=5)
+            ├── results_config_b.json   ← Per-question results for Config B (retryCount=1)
+            ├── results_config_c.json   ← Per-question results for Config C (generation only)
+            └── summary.json            ← Aggregated metrics: accuracy, latency, healing breakdown
 ```
 
 ## 3. Evaluation Methodology
@@ -434,7 +434,7 @@ Same as the main SQL Query Engine environment variables documented in the root R
 
 ## 11. Results Directory Structure
 
-After a complete run, the `results/` directory contains:
+After a complete run, the pipeline writes the following files to `results/`. Archive them to `results/runs/<model-name>/` before starting a new run (see [Running Against a Different Model](#running-against-a-different-model) above). The repository ships with archived benchmark results for five models under `results/runs/`.
 
 | File | Content |
 |---|---|
