@@ -22,3 +22,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# BIRD dataset — large binary files (~1.4GB), download separately
+evaluation/bird/bird_data/

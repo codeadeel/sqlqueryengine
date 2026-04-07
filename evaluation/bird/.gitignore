@@ -1,0 +1,7 @@
+# BIRD benchmark raw data — downloaded separately, not committed
+bird_data/
+
+# Intermediate file (re-generated on each run from bird_data/)
+bird_results/questions.json
+
+# Results per model are committed under bird_results/runs/{model}/

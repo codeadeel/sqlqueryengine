@@ -1,0 +1,163 @@
+{
+  "model": "llama-3.3-70b-versatile",
+  "llm_temperature": 0.1,
+  "total_questions": 500,
+  "excluded": 63,
+  "evaluated": 437,
+  "config_c": {
+    "accuracy": 43.7,
+    "correct": 191,
+    "avg_latency_s": 4.95,
+    "by_difficulty": {
+      "simple": 53.5,
+      "moderate": 45.1,
+      "challenging": 22.5
+    },
+    "by_database": {
+      "bird_debit_card_specializing": 26.9,
+      "bird_student_club": 51.1,
+      "bird_thrombosis_prediction": 36.7,
+      "bird_european_football_2": 33.3,
+      "bird_formula_1": 37.3,
+      "bird_superhero": 73.1,
+      "bird_codebase_community": 46.8,
+      "bird_card_games": 39.2,
+      "bird_toxicology": 35.0,
+      "bird_california_schools": 58.3,
+      "bird_financial": 40.7
+    },
+    "latency_percentiles": {
+      "min": 1.11,
+      "max": 16.48,
+      "mean": 4.95,
+      "median": 3.56,
+      "p90": 9.76,
+      "p95": 10.25,
+      "p99": 12.33
+    }
+  },
+  "config_b": {
+    "accuracy": 38.0,
+    "correct": 166,
+    "avg_latency_s": 9.74,
+    "by_difficulty": {
+      "simple": 43.7,
+      "moderate": 40.5,
+      "challenging": 21.2
+    },
+    "by_database": {
+      "bird_debit_card_specializing": 11.5,
+      "bird_student_club": 44.4,
+      "bird_thrombosis_prediction": 30.0,
+      "bird_european_football_2": 33.3,
+      "bird_formula_1": 37.3,
+      "bird_superhero": 67.3,
+      "bird_codebase_community": 25.5,
+      "bird_card_games": 31.4,
+      "bird_toxicology": 40.0,
+      "bird_california_schools": 58.3,
+      "bird_financial": 37.0
+    },
+    "latency_percentiles": {
+      "min": 1.18,
+      "max": 180.13,
+      "mean": 9.74,
+      "median": 5.5,
+      "p90": 18.4,
+      "p95": 20.03,
+      "p99": 26.43
+    }
+  },
+  "config_a": {
+    "accuracy": 46.5,
+    "correct": 203,
+    "avg_latency_s": 9.06,
+    "by_difficulty": {
+      "simple": 55.6,
+      "moderate": 47.9,
+      "challenging": 26.2
+    },
+    "by_database": {
+      "bird_debit_card_specializing": 23.1,
+      "bird_student_club": 77.8,
+      "bird_thrombosis_prediction": 36.7,
+      "bird_european_football_2": 43.8,
+      "bird_formula_1": 42.4,
+      "bird_superhero": 65.4,
+      "bird_codebase_community": 42.6,
+      "bird_card_games": 29.4,
+      "bird_toxicology": 42.5,
+      "bird_california_schools": 58.3,
+      "bird_financial": 44.4
+    },
+    "latency_percentiles": {
+      "min": 1.28,
+      "max": 35.41,
+      "mean": 9.06,
+      "median": 6.06,
+      "p90": 19.11,
+      "p95": 20.78,
+      "p99": 24.91
+    }
+  },
+  "healing_breakdown": {
+    "correct_first_attempt": 168,
+    "fixed_by_healing": 35,
+    "exhausted_retries": 211,
+    "errors_or_timeouts": 0,
+    "regressions": 23
+  },
+  "resource_metrics": {
+    "config_c": {
+      "config": "C",
+      "wall_time_s": 1138.93,
+      "peak_memory_mb": 99.6,
+      "questions_evaluated": 437,
+      "questions_excluded": 63,
+      "throughput_qpm": 23.0,
+      "latency_percentiles": {
+        "min": 1.11,
+        "max": 16.48,
+        "mean": 4.95,
+        "median": 3.56,
+        "p90": 9.76,
+        "p95": 10.25,
+        "p99": 12.33
+      }
+    },
+    "config_b": {
+      "config": "B",
+      "wall_time_s": 2193.5,
+      "peak_memory_mb": 99.6,
+      "questions_evaluated": 437,
+      "questions_excluded": 63,
+      "throughput_qpm": 12.0,
+      "latency_percentiles": {
+        "min": 1.18,
+        "max": 180.13,
+        "mean": 9.74,
+        "median": 5.5,
+        "p90": 18.4,
+        "p95": 20.03,
+        "p99": 26.43
+      }
+    },
+    "config_a": {
+      "config": "A",
+      "wall_time_s": 2048.68,
+      "peak_memory_mb": 99.6,
+      "questions_evaluated": 437,
+      "questions_excluded": 63,
+      "throughput_qpm": 12.8,
+      "latency_percentiles": {
+        "min": 1.28,
+        "max": 35.41,
+        "mean": 9.06,
+        "median": 6.06,
+        "p90": 19.11,
+        "p95": 20.78,
+        "p99": 24.91
+      }
+    }
+  }
+}

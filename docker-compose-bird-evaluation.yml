@@ -1,0 +1,145 @@
+services:
+
+  # %%
+  # PostgreSQL — empty instance, BIRD databases created at runtime by bird-runner.
+  # shm_size is increased because some BIRD databases are large.
+  bird-postgres:
+    image: postgres:16-alpine
+    container_name: bird-postgres
+    hostname: birdpostgres
+    shm_size: '2g'
+    environment:
+      POSTGRES_USER: birduser
+      POSTGRES_PASSWORD: birdpass
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U birduser -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - birdNetwork
+
+  # %%
+  # Redis — schema caching and pub/sub for the engine
+  bird-redis:
+    image: redis:alpine
+    container_name: bird-redis
+    hostname: birdredis
+    command: ["redis-server", "--requirepass", "birdPass", "--appendonly", "yes"]
+    networks:
+      - birdNetwork
+
+  # %%
+  # SQL Query Engine — built from the queryenginepostgresql stage of the root Dockerfile.
+  # The POSTGRES_DB default is a placeholder; the runner overrides it per-request
+  # via the postgreDBName query parameter.
+  bird-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: queryenginepostgresql
+    image: sql-query-engine:latest
+    container_name: bird-engine
+    hostname: birdengine
+    environment:
+      # LLM Configuration — Groq endpoint (set LLM_API_KEY to your Groq key)
+      - LLM_BASE_URL=https://api.groq.com/openai/v1
+      - LLM_MODEL=openai/gpt-oss-20b
+      - LLM_API_KEY=your-api-key-here
+      - LLM_TEMPERATURE=0.1
+
+      # PostgreSQL — points at bird-postgres (DB overridden per request)
+      - POSTGRES_HOST=birdpostgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=bird_concert_singer
+      - POSTGRES_USER=birduser
+      - POSTGRES_PASSWORD=birdpass
+
+      # Redis
+      - REDIS_HOST=birdredis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=birdPass
+      - REDIS_DB=0
+
+      # Server
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - SERVER_WORKERS=1
+      - BOT_NAME=SQLBot
+      - SPLIT_IDENTIFIER=<|-/|-/>
+      - OPENAI_API_KEY=
+      - COMPLETIONS_MODEL_NAME=SQLBot
+      - DEFAULT_RETRY_COUNT=5
+      - DEFAULT_SCHEMA_EXAMPLES=5
+      - DEFAULT_FEEDBACK_EXAMPLES=3
+    depends_on:
+      bird-postgres:
+        condition: service_healthy
+      bird-redis:
+        condition: service_started
+    networks:
+      - birdNetwork
+
+  # %%
+  # BIRD Evaluation Runner — built from the birdevaluationrunner stage of the root Dockerfile.
+  # Runs the full pipeline once (data load → migration → eval → report), then exits.
+  # Results are persisted via volume mounts.
+  bird-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: birdevaluationrunner
+    image: sql-query-bird-runner:latest
+    container_name: bird-runner
+    hostname: birdrunner
+    environment:
+      # PostgreSQL — direct connection for migration and gold query execution
+      - POSTGRES_HOST=birdpostgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=birduser
+      - POSTGRES_PASSWORD=birdpass
+
+      # Engine API — for the actual evaluation
+      - ENGINE_URL=http://birdengine:8080
+      - ENGINE_PG_HOST=birdpostgres
+      - ENGINE_PG_PORT=5432
+
+      # Redis — for flushing cache between configs
+      - REDIS_HOST=birdredis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=birdPass
+
+      # LLM metadata — used by birdScoreReport.py for summary.json
+      - LLM_MODEL=openai/gpt-oss-20b
+      - LLM_TEMPERATURE=0.1
+
+      # BIRD dataset configuration
+      - BIRD_DATA_DIR=/app/bird_data
+      - BIRD_RESULTS_DIR=/app/bird_results
+      - RESULTS_DIR=/app/bird_results
+      - BIRD_DATASET=mini
+      # Set BIRD_USE_EVIDENCE=true for the evidence-assisted upper bound
+      - BIRD_USE_EVIDENCE=true
+
+      # Evaluation tuning
+      - TIMEOUT_SECONDS=180
+      # Tune based on Groq rate limits: free tier ≈ 30 req/min → 3-4 workers is safe
+      - EVAL_MAX_WORKERS=4
+    volumes:
+      # Place BIRD SQLite files under evaluation/bird/bird_data/ before running:
+      #   evaluation/bird/bird_data/dev_databases/{db_id}/{db_id}.sqlite
+      #   evaluation/bird/bird_data/mini_dev_sqlite.json  (or dev.json)
+      - ./evaluation/bird/bird_data:/app/bird_data
+      - ./evaluation/bird/bird_results:/app/bird_results
+    depends_on:
+      bird-postgres:
+        condition: service_healthy
+      bird-engine:
+        condition: service_started
+    networks:
+      - birdNetwork
+
+networks:
+  birdNetwork:
+    driver: bridge

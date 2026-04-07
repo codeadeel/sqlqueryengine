@@ -14,7 +14,7 @@
 
 BASE_URL="http://localhost:5181"
 CHAT_ID="test-session-001"          # any string; namespaces Redis context
-API_KEY="meow123"                   # only needed when OPENAI_API_KEY is set on server
+API_KEY="change-me"                  # only needed when OPENAI_API_KEY is set on server
 
 
 # ─────────────────────────────────────────────────────────────────────────────

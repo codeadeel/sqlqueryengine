@@ -1,0 +1,17 @@
+{
+  "config": "A",
+  "wall_time_s": 7937.07,
+  "peak_memory_mb": 102.1,
+  "questions_evaluated": 437,
+  "questions_excluded": 63,
+  "throughput_qpm": 3.3,
+  "latency_percentiles": {
+    "min": 2.75,
+    "max": 180.13,
+    "mean": 36.01,
+    "median": 9.13,
+    "p90": 180.09,
+    "p95": 180.11,
+    "p99": 180.12
+  }
+}

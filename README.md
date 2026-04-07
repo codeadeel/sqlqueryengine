@@ -94,7 +94,8 @@ sqlqueryengine/
 ├── sqlQueryEngine/         ← Core inference package (see sqlQueryEngine/README.md)
 ├── evaluation/             ← Ablation study & benchmark harness (see evaluation/README.md)
 ├── docker-compose.yml      ← Production stack (engine + Redis + OpenWebUI)
-├── docker-compose-evaluation.yml ← Evaluation stack (engine + Redis + PostgreSQL + runner)
+├── docker-compose-synthetic-evaluation.yml ← Synthetic evaluation stack
+├── docker-compose-bird-evaluation.yml     ← BIRD benchmark evaluation stack
 ├── Dockerfile              ← Multi-stage build (engine image + evaluation runner image)
 ├── run.py                  ← Uvicorn launcher
 ├── curlCommands.sh         ← Curl command reference for every endpoint
@@ -213,13 +214,21 @@ curl http://localhost:5181/ping
 
 ## Evaluation
 
-The repository includes a self-contained evaluation harness that measures the self-healing loop's impact on query accuracy. It seeds three PostgreSQL databases (e-commerce, university, hospital) with synthetic data, runs 75 gold-annotated questions across three configurations (generation-only, single-shot, full pipeline), and produces ablation tables.
+The repository includes two evaluation pipelines that measure the self-healing loop's impact on query accuracy:
+
+**Synthetic Evaluation** — Seeds three PostgreSQL databases (e-commerce, university, hospital) with synthetic data, runs 75 gold-annotated questions across three configurations (generation-only, single-shot, full pipeline), and produces ablation tables.
 
 ```bash
-docker compose -f docker-compose-evaluation.yml up --build
+docker compose -f docker-compose-synthetic-evaluation.yml up --build
 ```
 
-Results are written to [`evaluation/results/`](evaluation/results/). See [`evaluation/README.md`](evaluation/README.md) for the full methodology, module reference, and benchmark results across five LLM backends.
+**BIRD Benchmark** — Evaluates against the [BIRD benchmark](https://bird-bench.github.io/) (500 real-world NL-to-SQL questions across 11 databases), converting SQLite databases to PostgreSQL at runtime.
+
+```bash
+docker compose -f docker-compose-bird-evaluation.yml up --build
+```
+
+See [`evaluation/README.md`](evaluation/README.md) for the full methodology, module reference, and benchmark results across five LLM backends.
 
 ## Further Reading
 

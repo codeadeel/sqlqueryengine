@@ -1,0 +1,21 @@
+{
+  "total_questions": 500,
+  "conversion_errors": 63,
+  "error_rate": 12.6,
+  "error_by_difficulty": {
+    "challenging": 22,
+    "simple": 6,
+    "moderate": 35
+  },
+  "error_by_database": {
+    "bird_debit_card_specializing": 4,
+    "bird_student_club": 3,
+    "bird_thrombosis_prediction": 20,
+    "bird_european_football_2": 3,
+    "bird_formula_1": 7,
+    "bird_codebase_community": 2,
+    "bird_card_games": 1,
+    "bird_california_schools": 18,
+    "bird_financial": 5
+  }
+}

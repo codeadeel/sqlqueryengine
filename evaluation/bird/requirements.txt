@@ -1,0 +1,6 @@
+psycopg[binary]>=3.3
+redis>=7.0
+tabulate>=0.9
+httpx>=0.28
+datasets>=2.14
+huggingface_hub>=0.20

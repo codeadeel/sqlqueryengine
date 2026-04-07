@@ -17,23 +17,23 @@ services:
       # Ollama:  LLM_BASE_URL=http://host.docker.internal:11434/v1
       # vLLM:    LLM_BASE_URL=http://host.docker.internal:8000/v1
       # OpenAI:  LLM_BASE_URL=https://api.openai.com/v1
-      - LLM_BASE_URL=http://host.docker.internal:8001/v1
-      - LLM_MODEL=Qwen3-Coder-30B-A3B-Instruct
-      - LLM_API_KEY=vllm123
-      - LLM_TEMPERATURE=0.7
+      - LLM_BASE_URL=http://host.docker.internal:11434/v1
+      - LLM_MODEL=qwen2.5-coder:7b
+      - LLM_API_KEY=ollama
+      - LLM_TEMPERATURE=0.1
 
       # PostgreSQL Configuration
       # Point this at your own Docker PostgreSQL container IP/hostname
       - POSTGRES_HOST=host.docker.internal
-      - POSTGRES_PORT=5141
-      - POSTGRES_DB=mesdb
-      - POSTGRES_USER=mesuser
-      - POSTGRES_PASSWORD=mespass
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=mydb
+      - POSTGRES_USER=myuser
+      - POSTGRES_PASSWORD=mypassword
 
       # Redis Configuration — uses the redis service defined below
       - REDIS_HOST=qeredis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=sqlPass
+      - REDIS_PASSWORD=redispassword
       - REDIS_DB=0
 
       # Server Configuration
@@ -50,7 +50,7 @@ services:
       # OpenAI-Compatible API — Authentication
       # Set to a secret value; leave empty to disable authentication entirely.
       # Comma-separate multiple keys to allow more than one token.
-      - OPENAI_API_KEY=meow123
+      - OPENAI_API_KEY=change-me
 
       # OpenAI-Compatible API — Model name exposed via /v1/models
       # This is the name OpenWebUI (or any OpenAI client) will see in the model list.
@@ -86,7 +86,7 @@ services:
       # Multiple connections are semicolon-separated; positions must match between
       # OPENAI_API_BASE_URLS and OPENAI_API_KEYS.
       - OPENAI_API_BASE_URLS=http://sqlqueryengine:8080/v1
-      - OPENAI_API_KEYS=meow123
+      - OPENAI_API_KEYS=change-me
     depends_on:
       - sql-query-engine
     restart: unless-stopped
@@ -103,7 +103,7 @@ services:
       - 6380:6379
     volumes:
       - sqlEngineRedis:/data
-    command: ["redis-server", "--requirepass", "sqlPass", "--appendonly", "yes"]
+    command: ["redis-server", "--requirepass", "redispassword", "--appendonly", "yes"]
     networks:
       - sqlEngineNetwork
 
