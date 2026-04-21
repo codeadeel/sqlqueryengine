@@ -2,6 +2,8 @@
 
 A self-hosted service that turns natural language questions into validated, executed PostgreSQL queries — powered by any OpenAI-compatible LLM.
 
+**Paper**: [SQL Query Engine: A Self-Healing LLM Pipeline for Natural Language to PostgreSQL Translation](https://arxiv.org/abs/2604.16511) (arXiv:2604.16511)
+
 Point it at a PostgreSQL database and an LLM endpoint. Ask questions in plain English. Get back SQL results.
 
 ## Introduction
@@ -234,6 +236,7 @@ See [`evaluation/README.md`](evaluation/README.md) for the full methodology, mod
 
 | Document | What it covers |
 |---|---|
+| [arXiv:2604.16511](https://arxiv.org/abs/2604.16511) | Technical report — architecture, design decisions, ablation study, benchmark results |
 | [`sqlQueryEngine/README.md`](sqlQueryEngine/README.md) | Internal architecture, every module, class/method reference, streaming protocol, Pub/Sub format |
 | [`evaluation/README.md`](evaluation/README.md) | Evaluation methodology, question bank, scoring logic, multi-model benchmark results |
 | [`curlCommands.sh`](curlCommands.sh) | Copy-paste curl examples for every endpoint |
