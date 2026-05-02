@@ -1,0 +1,218 @@
+\begin{thebibliography}{29}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Zhong et~al.(2017)Zhong, Xiong, and Socher]{zhong2017seq2sql}
+Victor Zhong, Caiming Xiong, and Richard Socher.
+\newblock {Seq2SQL}: Generating structured queries from natural language using
+  reinforcement learning.
+\newblock In \emph{arXiv preprint arXiv:1709.00103}, 2017.
+
+\bibitem[Yu et~al.(2018)Yu, Zhang, Yang, Yasunaga, Wang, Li, Ma, Li, Yao,
+  Roman, Zhang, and Radev]{yu2018spider}
+Tao Yu, Rui Zhang, Kai Yang, Michihiro Yasunaga, Dongxu Wang, Zifan Li, James
+  Ma, Irene Li, Qingning Yao, Shanelle Roman, Zilin Zhang, and Dragomir Radev.
+\newblock Spider: A large-scale human-labeled dataset for complex and
+  cross-domain semantic parsing and text-to-{SQL} task.
+\newblock In \emph{Proceedings of the 2018 Conference on Empirical Methods in
+  Natural Language Processing (EMNLP)}, pages 3911--3921. Association for
+  Computational Linguistics, 2018.
+\newblock \doi{10.18653/v1/D18-1425}.
+
+\bibitem[{OpenAI}(2023)]{openai2023gpt4}
+{OpenAI}.
+\newblock {GPT-4} technical report.
+\newblock \emph{arXiv preprint arXiv:2303.08774}, 2023.
+
+\bibitem[Touvron et~al.(2023)Touvron, Lavril, Izacard, Martinet, Lachaux,
+  Lacroix, Rozi\`{e}re, Goyal, Hambro, Azhar, et~al.]{touvron2023llama}
+Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie-Anne
+  Lachaux, Timoth\'{e}e Lacroix, Baptiste Rozi\`{e}re, Naman Goyal, Eric
+  Hambro, Faisal Azhar, et~al.
+\newblock {LLaMA}: Open and efficient foundation language models.
+\newblock \emph{arXiv preprint arXiv:2302.13971}, 2023.
+
+\bibitem[Pourreza and Rafiei(2023)]{pourreza2023dinsql}
+Mohammadreza Pourreza and Davood Rafiei.
+\newblock {DIN-SQL}: Decomposed in-context learning of text-to-{SQL} with
+  self-correction.
+\newblock In \emph{Advances in Neural Information Processing Systems 36
+  (NeurIPS)}, 2023.
+
+\bibitem[Gao et~al.(2024)Gao, Wang, Li, Sun, Qian, Ding, and
+  Zhou]{gao2024dailsql}
+Dawei Gao, Haibin Wang, Yaliang Li, Xiuyu Sun, Yichen Qian, Bolin Ding, and
+  Jingren Zhou.
+\newblock Text-to-{SQL} empowered by large language models: A benchmark
+  evaluation.
+\newblock \emph{Proceedings of the VLDB Endowment}, 17\penalty0 (5):\penalty0
+  1132--1145, 2024.
+
+\bibitem[Shi et~al.(2024)Shi, Tang, Zhang, Zhang, and Yang]{shi2024survey}
+Liang Shi, Zhengju Tang, Nan Zhang, Xiaotong Zhang, and Zhi Yang.
+\newblock A survey on employing large language models for text-to-{SQL} tasks.
+\newblock \emph{ACM Computing Surveys}, 2024.
+\newblock \doi{10.1145/3737873}.
+
+\bibitem[Li et~al.(2023)Li, Hui, Qu, Yang, Li, Li, Wang, Qin, Geng, Huo,
+  et~al.]{li2024bird}
+Jinyang Li, Binyuan Hui, Ge~Qu, Jiaxi Yang, Binhua Li, Bowen Li, Bailin Wang,
+  Bowen Qin, Ruiying Geng, Nan Huo, et~al.
+\newblock Can {LLM} already serve as a database interface? a big bench for
+  large-scale database grounded text-to-{SQL}.
+\newblock In \emph{Advances in Neural Information Processing Systems 36
+  (NeurIPS)}, 2023.
+
+\bibitem[{Open WebUI Community}(2024)]{openwebui2024}
+{Open WebUI Community}.
+\newblock {Open WebUI}: Self-hosted {AI} interface.
+\newblock \url{https://github.com/open-webui/open-webui}, 2024.
+\newblock Accessed: 2026-03-31.
+
+\bibitem[Wang et~al.(2020)Wang, Shin, Liu, Polozov, and
+  Richardson]{wang2020ratsql}
+Bailin Wang, Richard Shin, Xiaodong Liu, Oleksandr Polozov, and Matthew
+  Richardson.
+\newblock {RAT-SQL}: Relation-aware schema encoding and linking for
+  text-to-{SQL} parsers.
+\newblock In \emph{Proceedings of the 58th Annual Meeting of the Association
+  for Computational Linguistics (ACL)}, pages 7567--7578, 2020.
+
+\bibitem[Brown et~al.(2020)Brown, Mann, Ryder, Subbiah, Kaplan, Dhariwal,
+  Neelakantan, Shyam, Sastry, Askell, et~al.]{brown2020language}
+Tom~B. Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan,
+  Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda
+  Askell, et~al.
+\newblock Language models are few-shot learners.
+\newblock \emph{Advances in Neural Information Processing Systems},
+  33:\penalty0 1877--1901, 2020.
+
+\bibitem[Wei et~al.(2022)Wei, Wang, Schuurmans, Bosma, Ichter, Xia, Chi, Le,
+  and Zhou]{wei2022chain}
+Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Brian Ichter, Fei Xia,
+  Ed~Chi, Quoc Le, and Denny Zhou.
+\newblock Chain-of-thought prompting elicits reasoning in large language
+  models.
+\newblock \emph{Advances in Neural Information Processing Systems},
+  35:\penalty0 24824--24837, 2022.
+
+\bibitem[Dong et~al.(2023)Dong, Zhang, Ge, Mao, Gao, Chen, Lin, and
+  Lou]{dong2023c3}
+Xuemei Dong, Chao Zhang, Yuhang Ge, Yuren Mao, Yunjun Gao, Lu~Chen, Jinshu Lin,
+  and Dongfang Lou.
+\newblock {C3}: Zero-shot text-to-{SQL} with {ChatGPT}.
+\newblock \emph{arXiv preprint arXiv:2307.07306}, 2023.
+
+\bibitem[Pourreza et~al.(2025)Pourreza, Li, Sun, Chung, Talaei, Kakkar, Gan,
+  Saberi, Ozcan, and Arik]{chasesql2024}
+Mohammadreza Pourreza, Hailong Li, Ruoxi Sun, Yeounoh Chung, Shayan Talaei,
+  Gaurav~Tarlok Kakkar, Yu~Gan, Amin Saberi, Fatma Ozcan, and Sercan~O. Arik.
+\newblock {CHASE-SQL}: Multi-path reasoning and preference optimized candidate
+  selection in text-to-{SQL}.
+\newblock In \emph{Proceedings of the International Conference on Learning
+  Representations (ICLR)}, 2025.
+
+\bibitem[Hong et~al.(2025)Hong, Yuan, Zhang, Chen, Dong, Huang, and
+  Huang]{hong2024nextgen}
+Zijin Hong, Zheng Yuan, Qinggang Zhang, Hao Chen, Junnan Dong, Feiran Huang,
+  and Xiao Huang.
+\newblock Next-generation database interfaces: A survey of {LLM}-based
+  text-to-{SQL}.
+\newblock \emph{IEEE Transactions on Knowledge and Data Engineering}, 2025.
+
+\bibitem[Wang et~al.(2025)Wang, Ren, Yang, Liang, Bai, Zhang, Yan, and
+  Liu]{macsql2023}
+Bing Wang, Changyu Ren, Jian Yang, Xinnian Liang, Jiaqi Bai, Linzheng Zhang,
+  Zhao Yan, and Zhoujun Liu.
+\newblock {MAC-SQL}: A multi-agent collaborative framework for text-to-{SQL}.
+\newblock In \emph{Proceedings of the 31st International Conference on
+  Computational Linguistics (COLING)}, 2025.
+
+\bibitem[Pourreza and Rafiei(2024)]{pourreza2024dtssql}
+Mohammadreza Pourreza and Davood Rafiei.
+\newblock {DTS-SQL}: Decomposed text-to-{SQL} with small large language models.
+\newblock In \emph{Findings of the Association for Computational Linguistics:
+  EMNLP 2024}, 2024.
+
+\bibitem[Li et~al.(2024)Li, Hui, Qu, Yang, Li, Li, Wang, Qin, Cao, Geng,
+  et~al.]{li2024codes}
+Haoyang Li, Binyuan Hui, Jian Qu, Bowen Yang, Binhua Li, Bowen Li, Bailin Wang,
+  Bowen Qin, Rongyu Cao, Ruiying Geng, et~al.
+\newblock {CodeS}: Towards building open-source language models for
+  text-to-{SQL}.
+\newblock In \emph{Proceedings of the ACM SIGMOD International Conference on
+  Management of Data}, 2024.
+
+\bibitem[Chen et~al.(2024)Chen, Lin, Sch\"{a}rli, and Zhou]{chen2024teaching}
+Xinyun Chen, Maxwell Lin, Nathanael Sch\"{a}rli, and Denny Zhou.
+\newblock Teaching large language models to self-debug.
+\newblock In \emph{Proceedings of the International Conference on Learning
+  Representations (ICLR)}, 2024.
+
+\bibitem[Deng et~al.(2025)Deng, Ramachandran, Xu, et~al.]{deng2025reforce}
+Minghang Deng, Ashwin Ramachandran, Canwen Xu, et~al.
+\newblock {ReFoRCE}: A text-to-{SQL} agent with self-refinement, consensus
+  enforcement, and column exploration.
+\newblock \emph{arXiv preprint arXiv:2502.00675}, 2025.
+
+\bibitem[Askari et~al.(2025)Askari, Poelitz, Tang, et~al.]{askari2025magic}
+Arian Askari, Christian Poelitz, Xinye Tang, et~al.
+\newblock {MAGIC}: Generating self-correction guideline for in-context
+  text-to-{SQL}.
+\newblock \emph{Proceedings of the AAAI Conference on Artificial Intelligence},
+  2025.
+
+\bibitem[Scholak et~al.(2021)Scholak, Schucher, and
+  Bahdanau]{scholak2021picard}
+Torsten Scholak, Nathan Schucher, and Dzmitry Bahdanau.
+\newblock {PICARD}: Parsing incrementally for constrained auto-regressive
+  decoding from language models.
+\newblock In \emph{Proceedings of the 2021 Conference on Empirical Methods in
+  Natural Language Processing (EMNLP)}, pages 9895--9901, 2021.
+
+\bibitem[Ram\'{i}rez(2018)]{fastapi2018}
+Sebasti\'{a}n Ram\'{i}rez.
+\newblock {FastAPI}: Modern, fast (high-performance) web framework for building
+  {API}s with {Python}.
+\newblock \url{https://fastapi.tiangolo.com/}, 2018.
+\newblock Accessed: 2026-03-31.
+
+\bibitem[Chase(2022)]{langchain2022}
+Harrison Chase.
+\newblock {LangChain}: Building applications with {LLM}s through composability.
+\newblock \url{https://github.com/langchain-ai/langchain}, 2022.
+\newblock Accessed: 2026-03-31.
+
+\bibitem[Sanfilippo(2009)]{redis2009}
+Salvatore Sanfilippo.
+\newblock {Redis}: An in-memory data structure store.
+\newblock \url{https://redis.io/}, 2009.
+\newblock Accessed: 2026-03-31.
+
+\bibitem[Di~Gregorio and Varrazzo(2021)]{psycopg3}
+Federico Di~Gregorio and Daniele Varrazzo.
+\newblock {Psycopg} 3: {PostgreSQL} database adapter for {Python}.
+\newblock \url{https://www.psycopg.org/psycopg3/}, 2021.
+\newblock Accessed: 2026-03-31.
+
+\bibitem[Hickson(2015)]{hickson2015sse}
+Ian Hickson.
+\newblock Server-sent events.
+\newblock W3C Recommendation, \url{https://www.w3.org/TR/eventsource/}, 2015.
+\newblock Accessed: 2026-03-31.
+
+\bibitem[{Faker Contributors}(2023)]{faker2023}
+{Faker Contributors}.
+\newblock {Faker}: A {Python} package that generates fake data.
+\newblock \url{https://faker.readthedocs.io/}, 2023.
+\newblock Accessed: 2026-03-31.
+
+\bibitem[Merkel(2014)]{docker2013}
+Dirk Merkel.
+\newblock {Docker}: Lightweight {Linux} containers for consistent development
+  and deployment, 2014.
+
+\end{thebibliography}
